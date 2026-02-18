@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Galapp Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            display: flex;
+            height: 100vh;
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+
+        .sidebar {
+            width: 240px;
+            background: #111827;
+            padding: 30px 20px;
+        }
+
+        .sidebar h2 {
+            margin-bottom: 40px;
+            font-weight: 600;
+            font-size: 20px;
+        }
+
+        .sidebar ul {
+            list-style: none;
+        }
+
+        .sidebar ul li {
+            margin-bottom: 20px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: 0.2s;
+        }
+
+        .sidebar ul li:hover {
+            opacity: 1;
+        }
+
+        .main {
+            flex: 1;
+            padding: 40px;
+        }
+
+        .header {
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 25px;
+            border-radius: 12px;
+            transition: 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            background: #273549;
+        }
+
+        .card h3 {
+            font-size: 14px;
+            font-weight: 400;
+            opacity: 0.7;
+            margin-bottom: 10px;
+        }
+
+        .card p {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .footer {
+            margin-top: 60px;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        @media(max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Galapp</h2>
+    <ul>
+        <li>Dashboard</li>
+        <li>Users</li>
+        <li>Analytics</li>
+        <li>Settings</li>
+    </ul>
+</div>
+
+<div class="main">
+    <div class="header">
+        <h1>Dashboard Overview</h1>
+    </div>
+
+    <div class="cards">
+        <div class="card">
+            <h3>Total Users</h3>
+            <p>{{ total_users or "1,245" }}</p>
+        </div>
+
+        <div class="card">
+            <h3>Active Sessions</h3>
+            <p>{{ active_sessions or "312" }}</p>
+        </div>
+
+        <div class="card">
+            <h3>Revenue</h3>
+            <p>{{ revenue or "$8,430" }}</p>
+        </div>
+
+        <div class="card">
+            <h3>Errors (24h)</h3>
+            <p>{{ errors or "3" }}</p>
+        </div>
+    </div>
+
+    <div class="footer">
+        © 2026 Galapp · Secure Backend Architecture
+    </div>
+</div>
+
+</body>
+</html>
