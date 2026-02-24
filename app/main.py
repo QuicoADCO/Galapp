@@ -1,7 +1,11 @@
 import os
-from flask import Flask, jsonify, render_template, request, redirect, url_for
+from flask import Flask
 from dotenv import load_dotenv
-from werkzeug.security import generate_password_hash, check_password_hash
+
+from database import init_db, db
+from routes.auth import auth_bp
+from routes.api import api_bp
+from routes.frontend import frontend_bp
 
 load_dotenv()
 
@@ -17,63 +21,26 @@ for var in REQUIRED_ENV_VARS:
     if not os.getenv(var):
         raise RuntimeError(f"Missing required environment variable: {var}")
 
-app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+def create_app():
+    app = Flask(__name__)
 
-# ⚠️ Simulación de base de datos temporal
-users = {}
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 
+    init_db(app)
 
-@app.route("/")
-def health():
-    return jsonify({"status": "ok"}), 200
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(frontend_bp)
 
+    with app.app_context():
+        db.create_all()
 
-@app.route("/dashboard")
-def dashboard():
-    return render_template("dashboard.html")
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-
-        user = users.get(email)
-
-        if user and check_password_hash(user["password"], password):
-            return redirect(url_for("dashboard"))
-        else:
-            return render_template("login.html", error="Invalid credentials")
-
-    return render_template("login.html")
+    return app
 
 
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-        confirm_password = request.form.get("confirm_password")
-
-        if password != confirm_password:
-            return render_template("register.html", error="Passwords do not match")
-
-        if email in users:
-            return render_template("register.html", error="User already exists")
-
-        hashed_password = generate_password_hash(password)
-
-        users[email] = {
-            "password": hashed_password
-        }
-
-        return render_template("register.html", success="Account created successfully")
-
-    return render_template("register.html")
+app = create_app()
 
 
 if __name__ == "__main__":
