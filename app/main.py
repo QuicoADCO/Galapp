@@ -2,7 +2,7 @@ import os
 from flask import Flask
 from dotenv import load_dotenv
 
-from database import init_db, db
+from app.database import init_db, db
 from routes.auth import auth_bp
 from routes.api import api_bp
 from routes.frontend import frontend_bp
