@@ -1,17 +1,8 @@
-name: GalApp CI Pipeline
+name: CI
 
-on:
-  push:
-    branches:
-      - main
-      - develop
-
-  pull_request:
-    branches:
-      - main
+on: [push, pull_request]
 
 jobs:
-
   test:
 
     runs-on: ubuntu-latest
@@ -26,40 +17,27 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-    env:
-        PYTHONPATH: ${{ github.workspace }}
-
-        POSTGRES_USER: postgres
-        POSTGRES_PASSWORD: postgres
-        POSTGRES_DB: galapp
-        POSTGRES_HOST: localhost
-        POSTGRES_PORT: 5432
-
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/galapp
-
-        SECRET_KEY: test_secret_key
-        JWT_SECRET_KEY: test_jwt_secret_key
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
+      - uses: actions/checkout@v4
 
-      - name: Clonar repositorio
-        uses: actions/checkout@v3
-
-      - name: Instalar Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Instalar dependencias
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
+      - run: pip install -r requirements.txt
 
-      - name: Ejecutar tests
+      - name: Run tests
         run: pytest -v
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: galapp
+          SECRET_KEY: test
+          JWT_SECRET_KEY: test
