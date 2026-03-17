@@ -16,9 +16,8 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: api
+    env:
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
 
