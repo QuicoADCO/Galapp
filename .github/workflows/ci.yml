@@ -18,6 +18,12 @@ jobs:
 
     env:
       PYTHONPATH: ${{ github.workspace }}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: galapp
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      SECRET_KEY: test_secret
 
     steps:
 
@@ -36,5 +42,4 @@ jobs:
           pip install pytest
 
       - name: Ejecutar tests
-        run: |
-          pytest -v
+        run: pytest -v
