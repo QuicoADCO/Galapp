@@ -18,12 +18,21 @@ jobs:
 
     env:
       PYTHONPATH: ${{ github.workspace }}
+
+      # Database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: galapp
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
-      JWT_SECRET_KEY: test_secret_key
+
+      # App secrets
+      SECRET_KEY: test_secret_key
+      JWT_SECRET_KEY: test_jwt_secret_key
+
+      # Optional (por si tu app las usa)
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/galapp
+      FLASK_ENV: testing
 
     steps:
 
