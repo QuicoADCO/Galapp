@@ -23,7 +23,7 @@ jobs:
       POSTGRES_DB: galapp
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
-      SECRET_KEY: test_secret
+      JWT_SECRET_KEY: test_secret_key
 
     steps:
 
