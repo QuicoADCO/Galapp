@@ -3,9 +3,9 @@ from flask import Flask
 from dotenv import load_dotenv
 
 from app.database import init_db, db
-from routes.auth import auth_bp
-from routes.api import api_bp
-from routes.frontend import frontend_bp
+from app.routes.auth import auth_bp
+from app.routes.api import api_bp
+from app.routes.frontend import frontend_bp
 
 load_dotenv()
 
