@@ -2,52 +2,33 @@ name: GalApp CI Pipeline
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches:
+      - main
+      - develop
 
   pull_request:
-    branches: [ "main", "develop" ]
+    branches:
+      - main
 
 jobs:
 
-  test-backend:
+  test:
 
     runs-on: ubuntu-latest
 
-    services:
-
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: galapp
-          POSTGRES_USER: galapp
-          POSTGRES_PASSWORD: galapp
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U galapp"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    env:
-      DATABASE_URL: postgresql+psycopg2://galapp:galapp@localhost:5432/galapp
-      REDIS_URL: redis://localhost:6379/0
-      JWT_SECRET: ci_secret
+    defaults:
+      run:
+        working-directory: api
 
     steps:
 
-      - name: Descargar código
-        uses: actions/checkout@v4
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
 
       - name: Instalar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Instalar dependencias
         run: |
@@ -56,4 +37,5 @@ jobs:
           pip install pytest
 
       - name: Ejecutar tests
-        run: pytest -v
+        run: |
+          pytest -v
