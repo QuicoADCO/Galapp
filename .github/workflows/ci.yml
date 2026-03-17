@@ -1,3 +1,4 @@
+
 name: GalApp CI Pipeline
 
 on:
@@ -5,19 +6,24 @@ on:
     branches:
       - main
       - develop
-
   pull_request:
     branches:
       - main
 
 jobs:
-
   test:
-
     runs-on: ubuntu-latest
 
-    steps:
+    env:
+      POSTGRES_USER: galapp
+      POSTGRES_PASSWORD: superpassword123
+      POSTGRES_DB: galapp
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      SECRET_KEY: super-long-random-secret-key-123456
+      JWT_SECRET_KEY: another-super-long-random-key-987654
 
+    steps:
       - name: Clonar repositorio
         uses: actions/checkout@v4
 
@@ -33,5 +39,5 @@ jobs:
           pip install pytest
 
       - name: Ejecutar tests
-        run: |
-          PYTHONPATH=. pytest
+        run: PYTHONPATH=. pytest
+
