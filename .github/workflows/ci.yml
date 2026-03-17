@@ -32,16 +32,18 @@ jobs:
           --health-retries=5
 
     env:
-      PYTHONPATH: ${{ github.workspace }}
+        PYTHONPATH: ${{ github.workspace }}
 
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: galapp
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: 5432
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: galapp
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
 
-      SECRET_KEY: test_secret_key
-      JWT_SECRET_KEY: test_jwt_secret_key
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/galapp
+
+        SECRET_KEY: test_secret_key
+        JWT_SECRET_KEY: test_jwt_secret_key
 
     steps:
 
