@@ -1,14 +1,18 @@
-GalApp – Proyecto Final SecDevOps
-Descripción del proyecto
+# GalApp – Proyecto Final SecDevOps
+
+## Descripción del proyecto
 
 GalApp es una aplicación web desarrollada en Python con Flask cuyo objetivo es implementar y demostrar un ciclo completo de desarrollo seguro (SecDevOps).
 
-El proyecto integra conceptos clave de la asignatura de Puesta en Producción Segura, incluyendo autenticación, control de acceso, diseño de APIs, contenedorización, automatización de pruebas e integración continua, alineándose con buenas prácticas basadas en OWASP Top 10.
+El proyecto integra conceptos clave de Puesta en Producción Segura, incluyendo autenticación, control de acceso, diseño de APIs, contenedorización, automatización de pruebas e integración continua, alineándose con buenas prácticas basadas en OWASP Top 10.
 
-Arquitectura de la aplicación
+---
+
+## Arquitectura de la aplicación
 
 La aplicación sigue una arquitectura modular cliente-servidor estructurada en diferentes capas:
 
+```
 app/
 ├── models/
 ├── routes/
@@ -18,279 +22,253 @@ app/
 ├── templates/
 ├── database.py
 └── main.py
-Backend (API REST)
+```
 
-Archivo principal: app/routes/api.py
+---
 
-Funcionalidades implementadas
+## Backend (API REST)
 
-Endpoint de verificación (/api/health)
+Archivo principal: `app/routes/api.py`
 
-Gestión de encuestas:
+### Funcionalidades
 
-Crear encuestas
+* Endpoint de verificación: `/api/health`
+* Gestión de encuestas:
 
-Obtener encuestas
+  * Crear encuestas
+  * Obtener encuestas
+  * Obtener encuesta con sus opciones
+* Gestión de opciones
+* Registro de votos
 
-Obtener encuesta con sus opciones
+### Implementación
 
-Gestión de opciones de encuesta
+* Uso de Flask Blueprints (`api_bp`)
+* Rutas REST bajo `/api`
+* Respuestas en JSON con códigos HTTP
+* Conexión a SQLite mediante funciones auxiliares
 
-Registro de votos
+---
 
-Implementación
+## Autenticación
 
-Uso de Flask Blueprints (api_bp)
+Archivo: `app/routes/auth.py`
 
-Definición de rutas REST bajo el prefijo /api
+### Funcionalidades
 
-Conexión a base de datos SQLite mediante funciones auxiliares
+* Registro de usuarios
+* Inicio de sesión
 
-Respuestas en formato JSON con códigos HTTP adecuados
+### Implementación
 
-Autenticación
+* Contraseñas almacenadas como `password_hash`
+* Validación de credenciales
+* Separación de lógica de autenticación
 
-Archivo: app/routes/auth.py
+---
 
-Funcionalidades
-
-Registro de usuarios
-
-Inicio de sesión
-
-Implementación
-
-Almacenamiento de contraseñas mediante password_hash
-
-Validación de credenciales en el login
-
-Separación de lógica de autenticación respecto a la API
-
-Frontend
+## Frontend
 
 Archivos:
 
-app/routes/frontend.py
+* `app/routes/frontend.py`
+* `app/templates/`
 
-app/templates/
+### Funcionalidades
 
-Funcionalidades
+* Registro
+* Login
+* Navegación básica
 
-Interfaz de usuario para:
+### Implementación
 
-Registro
+* Plantillas HTML con Flask
+* Separación entre frontend y backend
 
-Login
+---
 
-Navegación básica
+## Base de datos
 
-Implementación
+Archivo: `init_db.py`
 
-Uso de plantillas HTML renderizadas con Flask
+### Tablas
 
-Separación clara entre lógica de presentación y backend
+* `users`
+* `surveys`
+* `survey_options`
+* `votes`
 
-Base de datos
+### Implementación
 
-Archivo: init_db.py
+* SQLite (`sqlite3`)
+* Claves primarias y foráneas
+* Timestamps automáticos
+* Relaciones entre entidades
 
-Estructura
+---
 
-Se implementa una base de datos SQLite con las siguientes tablas:
+## Seguridad
 
-users
+Archivo: `SECURITY.md`
 
-surveys
+### Medidas implementadas
 
-survey_options
+* Autenticación de usuarios
+* Hash de contraseñas
+* Validación de datos
+* Consultas parametrizadas
+* Uso de variables de entorno
+* Separación frontend/backend
 
-votes
+---
 
-Implementación
-
-Uso de sqlite3
-
-Definición de claves primarias y foráneas
-
-Generación automática de timestamps
-
-Relación entre entidades para garantizar integridad de datos
-
-Seguridad de la aplicación
-
-Archivo: SECURITY.md
-
-La aplicación incorpora medidas alineadas con OWASP Top 10.
-
-Medidas implementadas
-
-Autenticación de usuarios
-
-Hash de contraseñas
-
-Separación de roles y lógica de acceso
-
-Validación de datos en endpoints
-
-Uso de consultas parametrizadas en base de datos
-
-Configuración mediante variables de entorno
-
-Separación entre frontend y backend
-
-Contenedorización
+## Contenedorización
 
 Archivos:
 
-Dockerfile
+* `Dockerfile`
+* `docker-compose.yml`
+* `nginx/nginx.conf`
 
-docker-compose.yml
+### Implementación
 
-nginx/nginx.conf
+* Contenedor Flask
+* Proxy inverso con Nginx
+* Orquestación con Docker Compose
 
-Implementación
+### Ejecución
 
-Contenedor para la aplicación Flask
-
-Servidor proxy inverso con Nginx
-
-Orquestación mediante Docker Compose
-
-Ejecución
+```
 docker-compose up --build
-Testing
+```
 
-Carpeta: tests/
+---
 
-Implementación
+## Testing
 
-Uso de pytest
+Carpeta: `tests/`
 
-Tests automatizados para:
+### Implementación
 
-Autenticación
+* Uso de `pytest`
+* Tests de autenticación y API
 
-Funcionalidad de la API
+### Ejecución
 
-Ejecución
+```
 pytest -v
-Integración continua (CI)
+```
 
-Archivo: .github/workflows/ci.yml
+---
 
-Funcionamiento
+## Integración continua
 
-Cada vez que se realiza un push o pull request:
+Archivo: `.github/workflows/ci.yml`
 
-Se clona el repositorio
+### Funcionamiento
 
-Se configura el entorno de Python
+* Ejecución en cada push o pull request
+* Instalación de dependencias
+* Ejecución automática de tests
 
-Se instalan las dependencias
+---
 
-Se ejecutan los tests automatizados
+## API REST
 
-Esto permite validar automáticamente el estado del proyecto.
+Archivo: `app/routes/api.py`
 
-API REST
+| Método | Endpoint                  | Descripción                   |
+| ------ | ------------------------- | ----------------------------- |
+| GET    | /api/health               | Verificación del estado       |
+| GET    | /api/surveys              | Obtener encuestas             |
+| POST   | /api/surveys              | Crear encuesta                |
+| GET    | /api/surveys/<id>         | Obtener encuesta con opciones |
+| POST   | /api/surveys/<id>/options | Añadir opción                 |
+| POST   | /api/votes                | Registrar voto                |
 
-Archivo: app/routes/api.py
+---
 
-Endpoints principales
-Método	Endpoint	Descripción
-GET	/api/health	Verificación del estado
-GET	/api/surveys	Obtener encuestas
-POST	/api/surveys	Crear encuesta
-GET	/api/surveys/<id>	Obtener encuesta con opciones
-POST	/api/surveys/<id>/options	Añadir opción
-POST	/api/votes	Registrar voto
-Control de versiones
+## Control de versiones
 
-Se utiliza Git con una estrategia basada en GitFlow:
+Estrategia basada en GitFlow:
 
-main → versión estable
+* `main` → versión estable
+* `develop` → integración
+* `feature/*` → nuevas funcionalidades
+* `hotfix/*` → correcciones
+* `release/*` → versiones
 
-develop → integración de cambios
+---
 
-feature/* → nuevas funcionalidades
+## Tecnologías utilizadas
 
-hotfix/* → correcciones
+* Python
+* Flask
+* SQLite
+* Docker
+* Docker Compose
+* Nginx
+* Pytest
+* Git
+* GitHub Actions
 
-release/* → preparación de versiones
+---
 
-Tecnologías utilizadas
+## Pruebas con Postman
 
-Python
+Carpeta: `postman/`
 
-Flask
+### Endpoints probados
 
-SQLite
+#### Registro
 
-Docker
-
-Docker Compose
-
-Nginx
-
-Pytest
-
-Git
-
-GitHub Actions
-
-Pruebas de API con Postman
-
-Carpeta: postman/
-
-Descripción
-
-Se ha utilizado Postman para realizar pruebas manuales sobre los endpoints principales de autenticación de la aplicación.
-
-Estas pruebas permiten validar el correcto funcionamiento del sistema y simular el comportamiento de un cliente real interactuando con la API.
-
-Endpoints probados
-
-Registro de usuario:
-
+```
 POST http://localhost:5000/register
+```
+
+```json
 {
   "username": "usuario_test",
   "email": "test@email.com",
   "password": "123456"
 }
+```
 
-Inicio de sesión:
+#### Login
 
+```
 POST http://localhost:5000/login
+```
+
+```json
 {
   "email": "test@email.com",
   "password": "123456"
 }
-Objetivo de las pruebas
+```
 
-Verificar el registro correcto de usuarios en la base de datos
+### Objetivo
 
-Validar el proceso de autenticación
+* Validar registro de usuarios
+* Comprobar autenticación
+* Verificar respuestas HTTP
 
-Comprobar respuestas HTTP del servidor
+---
 
-Detectar errores durante el desarrollo
+## Uso
 
-Uso
+1. Ejecutar la aplicación
+2. Abrir Postman
+3. Realizar peticiones a:
 
-Ejecutar la aplicación
-
-Abrir Postman
-
-Realizar peticiones a:
-
+```
 http://localhost:5000
-Resultado
+```
 
-Las pruebas realizadas han permitido comprobar el correcto funcionamiento de los endpoints de autenticación, asegurando la comunicación entre cliente y servidor y la persistencia de datos en la base de datos.
+---
 
-Conclusión
+## Conclusión
 
 GalApp representa una implementación práctica de un flujo SecDevOps, integrando desarrollo backend, frontend, seguridad, automatización y despliegue en contenedores.
 
-El proyecto refleja una estructura modular clara, el uso de buenas prácticas y la automatización del ciclo de desarrollo, permitiendo validar el funcionamiento y la seguridad de la aplicación de forma continua.
+El proyecto presenta una estructura modular clara, uso de buenas prácticas y automatización del ciclo de desarrollo.
