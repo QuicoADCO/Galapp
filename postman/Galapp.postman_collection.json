@@ -1,0 +1,41 @@
+{
+  "info": {
+    "_postman_id": "ef3a5de9-c43d-449d-bc0b-b2dab42bb63b",
+    "name": "Galapp",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "41786908"
+  },
+  "item": [
+    {
+      "name": "Registro",
+      "request": {
+        "method": "GET",
+        "header": []
+      },
+      "response": [
+        {
+          "name": "Registro",
+          "originalRequest": {
+            "method": "GET",
+            "header": []
+          },
+          "_postman_previewlanguage": null,
+          "header": null,
+          "cookie": [],
+          "body": null
+        },
+        {
+          "name": "login",
+          "originalRequest": {
+            "method": "GET",
+            "header": []
+          },
+          "_postman_previewlanguage": null,
+          "header": null,
+          "cookie": [],
+          "body": null
+        }
+      ]
+    }
+  ]
+}
