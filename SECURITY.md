@@ -1,161 +1,194 @@
 # Seguridad de la aplicación
 
-Este documento describe las medidas de seguridad implementadas en el proyecto siguiendo las recomendaciones del **OWASP Top 10**.
+Este documento describe las medidas de seguridad implementadas en el proyecto **GalApp**, alineadas con el **OWASP Top 10**, y especifica en qué archivos se aplica cada una.
 
 ---
 
-# OWASP A01: Control de acceso roto (Broken Access Control)
+## OWASP A01: Control de acceso roto (Broken Access Control)
 
-**Medida aplicada**
+### Medidas aplicadas
 
-Uso de **JWT (JSON Web Tokens)** para autenticar usuarios y proteger endpoints privados.
+* Separación de rutas según responsabilidad:
 
-**Implementación**
+  * Autenticación
+  * API
+  * Frontend
+* Control del flujo de acceso a funcionalidades según autenticación
+
+### Implementación
 
 * `app/routes/auth.py`
-  Implementa el login y generación de tokens JWT.
+  Gestiona registro e inicio de sesión de usuarios.
 
 * `app/routes/api.py`
-  Contiene endpoints protegidos que requieren autenticación.
+  Define endpoints de la API que pueden ser restringidos según lógica de acceso.
+
+* `app/routes/frontend.py`
+  Controla la navegación del usuario en la interfaz.
 
 ---
 
-# OWASP A02: Fallos criptográficos (Cryptographic Failures)
+## OWASP A02: Fallos criptográficos (Cryptographic Failures)
 
-**Medidas aplicadas**
+### Medidas aplicadas
 
-* Uso de **SECRET_KEY** y **JWT_SECRET_KEY** para proteger sesiones y tokens.
-* Las claves sensibles se almacenan en **variables de entorno**.
+* Almacenamiento seguro de contraseñas mediante hash
+* Uso de claves secretas para la configuración de la aplicación
+* Uso de variables de entorno para evitar exponer información sensible
 
-**Implementación**
+### Implementación
 
-* `app/main.py`
-  Carga y valida las variables de entorno necesarias para el funcionamiento seguro de la aplicación.
+* `app/routes/auth.py`
+  Generación y verificación de contraseñas mediante hashing.
 
 * `.env`
-  Almacena claves secretas y credenciales fuera del código fuente.
+  Almacena:
+
+  * `SECRET_KEY`
+
+* `.gitignore`
+  Evita que el archivo `.env` se suba al repositorio.
 
 ---
 
-# OWASP A03: Inyección (Injection)
+## OWASP A03: Inyección (Injection)
 
-**Medida aplicada**
+### Medidas aplicadas
 
-Uso de **SQLAlchemy ORM** para evitar consultas SQL directas y prevenir ataques de inyección SQL.
+* Uso de consultas parametrizadas en SQLite
+* Evita concatenación directa de strings en consultas SQL
 
-**Implementación**
+### Implementación
 
 * `app/database.py`
-  Configuración de la base de datos utilizando SQLAlchemy.
+  Gestión de conexión a base de datos.
 
-* `app/models/user.py`
-  Definición del modelo de usuario utilizando ORM.
+* Uso de `sqlite3` con parámetros (`?`) en las consultas
 
 ---
 
-# OWASP A04: Diseño inseguro (Insecure Design)
+## OWASP A04: Diseño inseguro (Insecure Design)
 
-**Medidas aplicadas**
+### Medidas aplicadas
 
-* Separación clara entre:
+* Arquitectura modular separando responsabilidades
+* Separación entre lógica de negocio, autenticación y presentación
 
-  * rutas de autenticación
-  * rutas de API
-  * rutas de frontend
-
-**Implementación**
+### Implementación
 
 * `app/routes/auth.py`
 * `app/routes/api.py`
 * `app/routes/frontend.py`
 
-Esto mejora la organización del código y reduce riesgos de diseño inseguro.
+Esto reduce el acoplamiento y mejora la seguridad del diseño.
 
 ---
 
-# OWASP A05: Configuración de seguridad incorrecta (Security Misconfiguration)
+## OWASP A05: Configuración de seguridad incorrecta (Security Misconfiguration)
 
-**Medidas aplicadas**
+### Medidas aplicadas
 
-* Validación de variables de entorno obligatorias.
-* Uso de Docker para entornos controlados.
+* Uso de variables de entorno para configuración sensible
+* Contenedorización con Docker para entornos controlados
+* Separación entre entorno de desarrollo y ejecución
 
-**Implementación**
-
-* `app/main.py`
-  Verificación de variables críticas como:
-
-  * POSTGRES_USER
-  * POSTGRES_PASSWORD
-  * POSTGRES_DB
-  * SECRET_KEY
-  * JWT_SECRET_KEY
+### Implementación
 
 * `Dockerfile`
-  Define el entorno de ejecución de la aplicación.
+  Define el entorno de ejecución.
 
 * `docker-compose.yml`
-  Configura los servicios de aplicación y base de datos.
-
----
-
-# OWASP A07: Fallos de identificación y autenticación (Identification and Authentication Failures)
-
-**Medidas aplicadas**
-
-Sistema de autenticación basado en:
-
-* Registro de usuarios
-* Login con credenciales
-* Generación de token JWT
-
-**Implementación**
-
-* `app/routes/auth.py`
-  Manejo de registro y login de usuarios.
-
-* `app/models/user.py`
-  Modelo de usuario almacenado en base de datos.
-
----
-
-# OWASP A09: Fallos en el registro y monitoreo de seguridad (Security Logging and Monitoring Failures)
-
-**Medidas aplicadas**
-
-* Manejo controlado de errores.
-* Validación de variables críticas al inicio de la aplicación.
-
-**Implementación**
+  Orquesta los servicios.
 
 * `app/main.py`
-  Genera errores si faltan variables críticas de configuración.
+  Carga configuración desde variables de entorno.
 
 ---
 
-# Protección de credenciales
+## OWASP A07: Fallos de identificación y autenticación (Identification and Authentication Failures)
 
-Las credenciales sensibles **no se almacenan en el código fuente**.
+### Medidas aplicadas
 
-**Archivos implicados**
+* Sistema de autenticación basado en:
+
+  * Registro de usuarios
+  * Login con validación de credenciales
+* Almacenamiento de contraseñas hasheadas
+
+### Implementación
+
+* `app/routes/auth.py`
+  Manejo completo del flujo de autenticación.
+
+* Base de datos (`users`)
+  Almacena credenciales de forma segura (`password_hash`).
+
+---
+
+## OWASP A09: Fallos en el registro y monitoreo de seguridad (Security Logging and Monitoring Failures)
+
+### Medidas aplicadas
+
+* Manejo controlado de errores
+* Respuestas HTTP estructuradas
+* Validación de entrada de datos
+
+### Implementación
+
+* `app/routes/api.py`
+  Devuelve respuestas JSON con códigos HTTP adecuados.
+
+* `app/main.py`
+  Control de errores al iniciar la aplicación.
+
+---
+
+## Protección de credenciales
+
+Las credenciales sensibles no se almacenan en el código fuente.
+
+### Archivos implicados
 
 * `.env`
 * `.env.example`
 * `.gitignore`
 
-`.env` está excluido del repositorio para evitar exposición de secretos.
+El archivo `.env` está excluido del repositorio para evitar la exposición de secretos.
 
 ---
 
-# Seguridad en despliegue
+## Seguridad en base de datos
 
-La aplicación se ejecuta mediante **Docker**, lo que proporciona:
+### Medidas aplicadas
 
-* aislamiento del entorno
-* control de dependencias
-* configuración reproducible
+* Uso de claves primarias y foráneas
+* Integridad referencial entre tablas
+* Separación de entidades (users, surveys, votes)
 
-**Archivos**
+### Implementación
+
+* `init_db.py`
+  Definición de estructura de base de datos SQLite.
+
+---
+
+## Seguridad en despliegue
+
+La aplicación se ejecuta mediante Docker, lo que proporciona:
+
+* Aislamiento del entorno
+* Control de dependencias
+* Reproducibilidad
+
+### Archivos
 
 * `Dockerfile`
 * `docker-compose.yml`
+
+---
+
+## Conclusión
+
+GalApp implementa medidas de seguridad alineadas con OWASP Top 10, incluyendo protección de credenciales, validación de datos, separación de responsabilidades y configuración segura del entorno.
+
+Estas prácticas permiten reducir riesgos comunes en aplicaciones web y asegurar un desarrollo más robusto dentro del enfoque SecDevOps.
