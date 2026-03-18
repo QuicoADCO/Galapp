@@ -1,221 +1,296 @@
-# GalApp – Proyecto Final SecDevOps
+GalApp – Proyecto Final SecDevOps
+Descripción del proyecto
 
-## Descripción del proyecto
+GalApp es una aplicación web desarrollada en Python con Flask cuyo objetivo es implementar y demostrar un ciclo completo de desarrollo seguro (SecDevOps).
 
-**GalApp** es una aplicación web sencilla desarrollada en **Python con Flask** cuyo objetivo es simular un ciclo completo de **desarrollo seguro (SecDevOps)**.
+El proyecto integra conceptos clave de la asignatura de Puesta en Producción Segura, incluyendo autenticación, control de acceso, diseño de APIs, contenedorización, automatización de pruebas e integración continua, alineándose con buenas prácticas basadas en OWASP Top 10.
 
-El proyecto integra diferentes conceptos vistos en la asignatura de **Puesta en Producción Segura**, incluyendo contenedorización, autenticación, control de acceso, automatización de pruebas y revisión de vulnerabilidades basadas en **OWASP Top 10**.
+Arquitectura de la aplicación
 
-El objetivo principal no es la complejidad funcional de la aplicación, sino demostrar la integración de **prácticas de desarrollo seguro durante todo el ciclo de vida del software**.
+La aplicación sigue una arquitectura modular cliente-servidor estructurada en diferentes capas:
 
----
+app/
+├── models/
+├── routes/
+│   ├── api.py
+│   ├── auth.py
+│   └── frontend.py
+├── templates/
+├── database.py
+└── main.py
+Backend (API REST)
 
-# Arquitectura de la aplicación
+Archivo principal: app/routes/api.py
 
-La aplicación sigue una arquitectura cliente-servidor separada en **frontend y backend**.
+Funcionalidades implementadas
 
-### Frontend
+Endpoint de verificación (/api/health)
 
-* Implementado con **Flask** y plantillas HTML.
-* Interfaz simple para autenticación de usuarios y acceso a funcionalidades.
+Gestión de encuestas:
 
-### Backend
+Crear encuestas
 
-* API desarrollada también con **Flask**.
-* Gestiona autenticación, lógica de negocio y comunicación con la base de datos.
+Obtener encuestas
 
-### Infraestructura
+Obtener encuesta con sus opciones
 
-La aplicación se ejecuta utilizando contenedores:
+Gestión de opciones de encuesta
 
-* **Docker**
-* **Docker Compose**
-* **Nginx** como servidor proxy
+Registro de votos
 
-Esto permite garantizar que el entorno sea reproducible en cualquier sistema.
+Implementación
 
----
+Uso de Flask Blueprints (api_bp)
 
-# Autenticación y autorización
+Definición de rutas REST bajo el prefijo /api
 
-La aplicación implementa un sistema básico de autenticación con dos tipos de usuario:
+Conexión a base de datos SQLite mediante funciones auxiliares
 
-* **Administrador**
-* **Usuario normal**
+Respuestas en formato JSON con códigos HTTP adecuados
 
-Una vez autenticado el usuario, la aplicación puede modificar la interfaz o comportamiento dependiendo del rol.
-Por ejemplo, el administrador puede visualizar diferencias en la interfaz de la aplicación.
+Autenticación
 
-Este mecanismo permite simular un sistema de **control de acceso basado en roles (RBAC)**.
+Archivo: app/routes/auth.py
 
----
+Funcionalidades
 
-# Entorno de desarrollo
+Registro de usuarios
 
-Para aislar el desarrollo de otros proyectos se utiliza un **entorno virtual de Python**.
+Inicio de sesión
 
-Ejemplo de activación del entorno virtual:
+Implementación
 
-```
-(.venv) user@equipo:~/galapp$
-```
+Almacenamiento de contraseñas mediante password_hash
 
-Esto garantiza que las dependencias del proyecto no interfieran con otras aplicaciones instaladas en el sistema.
+Validación de credenciales en el login
 
----
+Separación de lógica de autenticación respecto a la API
 
-# Contenedorización
+Frontend
 
-La aplicación está preparada para ejecutarse en contenedores Docker.
+Archivos:
 
-Archivos principales:
+app/routes/frontend.py
 
-* `Dockerfile`
-* `docker-compose.yml`
+app/templates/
 
-Para iniciar la aplicación:
+Funcionalidades
 
-```
+Interfaz de usuario para:
+
+Registro
+
+Login
+
+Navegación básica
+
+Implementación
+
+Uso de plantillas HTML renderizadas con Flask
+
+Separación clara entre lógica de presentación y backend
+
+Base de datos
+
+Archivo: init_db.py
+
+Estructura
+
+Se implementa una base de datos SQLite con las siguientes tablas:
+
+users
+
+surveys
+
+survey_options
+
+votes
+
+Implementación
+
+Uso de sqlite3
+
+Definición de claves primarias y foráneas
+
+Generación automática de timestamps
+
+Relación entre entidades para garantizar integridad de datos
+
+Seguridad de la aplicación
+
+Archivo: SECURITY.md
+
+La aplicación incorpora medidas alineadas con OWASP Top 10.
+
+Medidas implementadas
+
+Autenticación de usuarios
+
+Hash de contraseñas
+
+Separación de roles y lógica de acceso
+
+Validación de datos en endpoints
+
+Uso de consultas parametrizadas en base de datos
+
+Configuración mediante variables de entorno
+
+Separación entre frontend y backend
+
+Contenedorización
+
+Archivos:
+
+Dockerfile
+
+docker-compose.yml
+
+nginx/nginx.conf
+
+Implementación
+
+Contenedor para la aplicación Flask
+
+Servidor proxy inverso con Nginx
+
+Orquestación mediante Docker Compose
+
+Ejecución
 docker-compose up --build
-```
+Testing
 
-Esto construye los contenedores necesarios y ejecuta la aplicación en un entorno aislado.
+Carpeta: tests/
 
----
+Implementación
 
-# Seguridad de la aplicación
+Uso de pytest
 
-Durante el desarrollo se han tenido en cuenta diferentes vulnerabilidades descritas en **OWASP Top 10**.
+Tests automatizados para:
 
-Las principales medidas consideradas incluyen:
+Autenticación
 
-* Control de acceso mediante autenticación.
-* Separación de roles de usuario.
-* Uso de ORM para evitar inyecciones SQL.
-* Configuración mediante variables de entorno.
-* Separación entre frontend y backend mediante API.
+Funcionalidad de la API
 
-El análisis completo de seguridad se encuentra documentado en:
+Ejecución
+pytest -v
+Integración continua (CI)
 
-* `SECURITY.md`
+Archivo: .github/workflows/ci.yml
 
----
+Funcionamiento
 
-# Seguridad en la API
+Cada vez que se realiza un push o pull request:
 
-La comunicación entre el frontend y el backend se realiza mediante una **API REST**.
+Se clona el repositorio
 
-Medidas aplicadas:
+Se configura el entorno de Python
 
-* Validación de datos recibidos.
-* Separación entre capas de aplicación.
-* Control de acceso en endpoints protegidos.
+Se instalan las dependencias
 
-Esto ayuda a reducir riesgos relacionados con manipulación de datos o accesos no autorizados.
+Se ejecutan los tests automatizados
 
----
+Esto permite validar automáticamente el estado del proyecto.
 
-# Pruebas del proyecto
+API REST
 
-El proyecto incluye **tests automatizados** utilizando el framework **pytest**.
+Archivo: app/routes/api.py
 
-Tipos de pruebas implementadas:
+Endpoints principales
+Método	Endpoint	Descripción
+GET	/api/health	Verificación del estado
+GET	/api/surveys	Obtener encuestas
+POST	/api/surveys	Crear encuesta
+GET	/api/surveys/<id>	Obtener encuesta con opciones
+POST	/api/surveys/<id>/options	Añadir opción
+POST	/api/votes	Registrar voto
+Control de versiones
 
-* **Tests unitarios**
-* **Tests de integración**
+Se utiliza Git con una estrategia basada en GitFlow:
 
-Para ejecutar las pruebas:
+main → versión estable
 
-```
-pytest
-```
+develop → integración de cambios
 
-Las pruebas permiten verificar el funcionamiento correcto de:
+feature/* → nuevas funcionalidades
 
-* autenticación
-* endpoints de la API
-* lógica principal de la aplicación
+hotfix/* → correcciones
 
----
+release/* → preparación de versiones
 
-# Integración continua (CI)
+Tecnologías utilizadas
 
-El proyecto utiliza **GitHub Actions** para automatizar el proceso de integración continua.
+Python
 
-Cada vez que se realiza un **push** o **pull request** al repositorio:
+Flask
 
-1. Se clona el repositorio
-2. Se instala Python
-3. Se instalan las dependencias del proyecto
-4. Se ejecutan los tests automáticos
+SQLite
 
-Esto permite detectar errores de forma temprana y garantizar la estabilidad del proyecto.
+Docker
 
-El flujo de automatización se encuentra en:
+Docker Compose
 
-```
-.github/workflows/ci.yml
-```
+Nginx
 
----
+Pytest
 
-# Control de versiones
+Git
 
-El proyecto utiliza **Git** como sistema de control de versiones.
+GitHub Actions
 
-Se sigue una estrategia de ramas inspirada en **GitFlow**:
+Pruebas de API con Postman
 
-* `main` → versión estable del proyecto
-* `develop` → integración de nuevas funcionalidades
-* `feature/*` → desarrollo de nuevas características
-* `hotfix/*` → corrección de errores críticos
-* `release/*` → preparación de nuevas versiones
+Carpeta: postman/
 
-Esta estrategia permite mantener un desarrollo organizado y seguro.
+Descripción
 
----
+Se ha utilizado Postman para realizar pruebas manuales sobre los endpoints principales de autenticación de la aplicación.
 
-# Estructura del proyecto
+Estas pruebas permiten validar el correcto funcionamiento del sistema y simular el comportamiento de un cliente real interactuando con la API.
 
-```
-galapp/
-│
-├── app/
-│   ├── models/
-│   ├── routes/
-│   └── templates/
-│
-├── tests/
-│
-├── docker/
-│
-├── .github/workflows/
-│
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── README.md
-└── SECURITY.md
-```
+Endpoints probados
 
----
+Registro de usuario:
 
-# Tecnologías utilizadas
+POST http://localhost:5000/register
+{
+  "username": "usuario_test",
+  "email": "test@email.com",
+  "password": "123456"
+}
 
-* Python
-* Flask
-* SQLAlchemy
-* Docker
-* Docker Compose
-* Nginx
-* Git
-* GitHub Actions
-* Pytest
+Inicio de sesión:
 
----
+POST http://localhost:5000/login
+{
+  "email": "test@email.com",
+  "password": "123456"
+}
+Objetivo de las pruebas
 
-# Conclusión
+Verificar el registro correcto de usuarios en la base de datos
 
-Este proyecto demuestra cómo integrar prácticas de **seguridad, automatización y control de versiones dentro de un flujo de desarrollo SecDevOps**.
+Validar el proceso de autenticación
 
-Aunque la aplicación es sencilla, incorpora diferentes elementos clave para el desarrollo de aplicaciones seguras y preparadas para producción.
+Comprobar respuestas HTTP del servidor
+
+Detectar errores durante el desarrollo
+
+Uso
+
+Ejecutar la aplicación
+
+Abrir Postman
+
+Realizar peticiones a:
+
+http://localhost:5000
+Resultado
+
+Las pruebas realizadas han permitido comprobar el correcto funcionamiento de los endpoints de autenticación, asegurando la comunicación entre cliente y servidor y la persistencia de datos en la base de datos.
+
+Conclusión
+
+GalApp representa una implementación práctica de un flujo SecDevOps, integrando desarrollo backend, frontend, seguridad, automatización y despliegue en contenedores.
+
+El proyecto refleja una estructura modular clara, el uso de buenas prácticas y la automatización del ciclo de desarrollo, permitiendo validar el funcionamiento y la seguridad de la aplicación de forma continua.
