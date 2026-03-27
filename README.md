@@ -556,31 +556,144 @@ volumes:
 
 ## Testing
 
-Los tests usan **SQLite en memoria** para ejecutarse sin necesidad de PostgreSQL local.
+**62 tests — 0 fallos.** Usan **SQLite en memoria**: no requieren Docker ni PostgreSQL para ejecutarse.
+
+### Ejecución
 
 ```bash
-# Instalar dependencias
-pip install -r requirements.txt
+# Dentro del contenedor (recomendado — mismas dependencias que producción)
+docker compose exec web python -m pytest tests/ -v
 
-# Ejecutar todos los tests
-pytest -v
+# Local (requiere pip install -r requirements.txt)
+python -m pytest tests/ -v
 ```
 
-### Configuración de tests — `tests/conftest.py`
+### Infraestructura — `tests/conftest.py`
 
 El fixture `client` crea una instancia de la app con `test_config`:
 - `SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"`
-- Hace `db.create_all()` antes de cada test
-- Hace `db.drop_all()` después de cada test
+- `db.create_all()` antes de cada test → `db.drop_all()` al terminar
+- Sin estado compartido entre tests
 
-No hay estado compartido entre tests.
+Helpers reutilizables expuestos desde `conftest.py`:
 
-### Tests incluidos — `tests/test_auth.py`
+| Helper | Descripción |
+|--------|-------------|
+| `register(client, ...)` | POST /auth/register con datos por defecto sobreescribibles |
+| `login(client, ...)` | POST /auth/login |
+| `auth_headers(client, ...)` | Registra + hace login y devuelve `{"Authorization": "Bearer ..."}` listo para usar |
 
-| Test             | Descripción                                            |
-|------------------|--------------------------------------------------------|
-| `test_register`  | POST /auth/register devuelve 201 con datos válidos     |
-| `test_login`     | POST /auth/login devuelve 200 con campo `token` en JSON|
+---
+
+### Tests unitarios
+
+Validan lógica interna **sin levantar servidor HTTP**.
+
+#### `tests/test_auth.py` — `TestGenerateToken` / `TestGetSecret`
+
+| Test | Qué verifica |
+|------|-------------|
+| `test_returns_string` | `generate_token` devuelve string con formato `header.payload.signature` |
+| `test_payload_contains_required_claims` | El JWT contiene `id`, `username`, `role` y `exp` con los valores correctos |
+| `test_token_expires_in_about_one_hour` | El campo `exp` está entre 59 y 61 minutos en el futuro |
+| `test_raises_if_missing` | `_get_secret()` lanza `RuntimeError` si `JWT_SECRET_KEY` no está definida |
+
+#### `tests/test_surveys.py` — `TestSurveyModel`
+
+| Test | Qué verifica |
+|------|-------------|
+| `test_survey_created_correctly` | El modelo `Survey` se persiste con `id` y `created_at` automáticos |
+| `test_survey_option_linked_to_survey` | `SurveyOption` queda enlazada vía FK y accesible en `survey.options` |
+| `test_vote_unique_constraint` | La `UniqueConstraint(survey_id, user_id)` lanza `IntegrityError` en doble voto |
+
+#### `tests/test_votes.py` — `TestVoteModel`
+
+| Test | Qué verifica |
+|------|-------------|
+| `test_same_user_cannot_vote_twice_in_db` | La BD rechaza dos votos del mismo usuario en la misma encuesta |
+| `test_different_users_can_vote_same_survey` | Dos usuarios distintos pueden votar en la misma encuesta sin conflicto |
+
+---
+
+### Tests de integración
+
+Cubren el **flujo HTTP completo** a través del cliente de test Flask.
+
+#### `tests/test_auth.py` — Registro (13 casos)
+
+| Test | Código esperado |
+|------|----------------|
+| `test_success_returns_201` | 201 |
+| `test_missing_username/email/password_returns_400` | 400 |
+| `test_duplicate_username_returns_400` | 400 |
+| `test_duplicate_email_returns_400` | 400 |
+| `test_weak_password_no_uppercase_returns_400` | 400 |
+| `test_weak_password_too_short_returns_400` | 400 |
+| `test_weak_password_no_digit_returns_400` | 400 |
+| `test_invalid_email_returns_400` | 400 |
+| `test_invalid_username_too_short_returns_400` | 400 |
+| `test_invalid_username_special_chars_returns_400` | 400 |
+| `test_empty_body_returns_400` | 400 |
+
+#### `tests/test_auth.py` — Login (7 casos)
+
+| Test | Código esperado |
+|------|----------------|
+| `test_success_returns_token` | 200 + `token` con formato JWT |
+| `test_wrong_password_returns_401` | 401 |
+| `test_nonexistent_user_returns_401` | 401 |
+| `test_missing_username/password_returns_400` | 400 |
+| `test_empty_body_returns_400` | 400 |
+| `test_error_message_is_generic` | Mismo mensaje para usuario y contraseña incorrectos (OWASP A07) |
+
+#### `tests/test_auth.py` — Protección JWT (4 casos)
+
+| Test | Qué verifica |
+|------|-------------|
+| `test_no_token_returns_401` | Sin cabecera Authorization → 401 |
+| `test_invalid_token_returns_401` | Token con firma inválida → 401 |
+| `test_malformed_header_returns_401` | Header sin prefijo `Bearer` → 401 |
+| `test_valid_token_grants_access` | Token válido → acceso concedido (200) |
+
+#### `tests/test_surveys.py` — CRUD de encuestas (15 casos)
+
+| Test | Código esperado |
+|------|----------------|
+| `test_returns_empty_list_initially` | 200 + `[]` |
+| `test_returns_created_survey` | 200 + array con la encuesta creada |
+| `test_success_returns_201_with_id` | 201 + `id` numérico |
+| `test_missing_title_returns_400` | 400 |
+| `test_title_too_long_returns_400` (201 chars) | 400 |
+| `test_created_by_is_taken_from_jwt_not_body` | 201 y `created_by ≠ 9999` (IDOR) |
+| `test_survey_without_description_is_ok` | 201 |
+| `test_returns_survey_with_options` | 200 + `survey` + `options[]` |
+| `test_nonexistent_survey_returns_404` | 404 |
+| `test_add_option_success` | 201 |
+| `test_option_text_too_long_returns_400` (301 chars) | 400 |
+| `test_missing_option_text_returns_400` | 400 |
+| `test_survey_not_found_returns_404` | 404 |
+| Todos los endpoints sin token | 401 |
+
+#### `tests/test_votes.py` — Votación (7 casos + 1 end-to-end)
+
+| Test | Qué verifica |
+|------|-------------|
+| `test_success_returns_201` | Voto registrado correctamente |
+| `test_double_vote_returns_400` | El mismo usuario no puede votar dos veces |
+| `test_user_id_is_taken_from_jwt_not_body` | Enviar `user_id: 9999` no suplanta a otro usuario (IDOR) |
+| `test_two_different_users_can_vote` | Dos usuarios distintos votan con éxito |
+| `test_missing_survey_id/option_id_returns_400` | 400 por campos faltantes |
+| `test_unauthenticated_returns_401` | 401 sin token |
+| `test_register_login_create_vote` | Flujo completo: registro → login → encuesta → opciones → voto → doble voto bloqueado |
+
+#### `tests/test_health.py` — Health y error handlers (4 casos)
+
+| Test | Qué verifica |
+|------|-------------|
+| `test_health_returns_200` | GET /api/health devuelve `{"status": "ok"}` |
+| `test_health_no_auth_required` | El endpoint es público (sin JWT) |
+| `test_404_returns_json` | Las rutas inexistentes devuelven JSON, no HTML de Flask |
+| `test_404_no_stack_trace` | La respuesta no contiene `Traceback` ni rutas internas |
 
 ---
 
@@ -706,97 +819,76 @@ refactor: refactorización sin cambio de comportamiento
 
 ## Pruebas con Postman
 
-Colección disponible en: `postman/Galapp.postman_collection.json`
+### Archivos
 
-La aplicación corre en **http://localhost** (puerto 80 vía Nginx).
+| Archivo | Descripción |
+|---------|-------------|
+| `postman/Galapp.postman_collection.json` | Colección con todos los endpoints, ejemplos y tests automáticos |
+| `postman/Galapp.postman_environment.json` | Environment con variables `base_url`, `token`, `survey_id`, `option_id` |
 
-### 1. Registro
+### Importar
 
-```json
-POST http://localhost/auth/register
-Content-Type: application/json
+1. Postman → **File → Import** → selecciona `Galapp.postman_collection.json`
+2. Postman → **File → Import** → selecciona `Galapp.postman_environment.json`
+3. Arriba a la derecha selecciona el environment **"Galapp – Local"**
 
-{
-  "username": "usuario_test",
-  "email": "test@email.com",
-  "password": "MiPassword1"
-}
-```
+### Variables de entorno
 
-Respuesta `201`:
-```json
-{ "message": "User created" }
-```
+| Variable | Valor por defecto | Se actualiza automáticamente al... |
+|----------|-------------------|------------------------------------|
+| `base_url` | `http://localhost` | — (fija) |
+| `token` | *(vacío)* | Ejecutar **Auth / Login** |
+| `survey_id` | `1` | Ejecutar **Crear encuesta** o **Listar encuestas** |
+| `option_id` | `1` | Ejecutar **Añadir opción** o **Ver encuesta con opciones** |
 
-### 2. Login
-
-```json
-POST http://localhost/auth/login
-Content-Type: application/json
-
-{
-  "username": "usuario_test",
-  "password": "MiPassword1"
-}
-```
-
-Respuesta `200`:
-```json
-{ "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." }
-```
-
-### 3. Usar el token en Postman
-
-Pestaña **Authorization** → tipo **Bearer Token** → pegar el valor del campo `token`.
-
-### 4. Crear encuesta
-
-```json
-POST http://localhost/api/surveys
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "title": "¿Cuál es tu framework favorito?",
-  "description": "Vota tu favorito"
-}
-```
-
-Respuesta `201`:
-```json
-{ "message": "Survey created", "id": 1 }
-```
-
-### 5. Añadir opciones
-
-```json
-POST http://localhost/api/surveys/1/options
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{ "option_text": "Flask" }
-```
-
-### 6. Votar
-
-```json
-POST http://localhost/api/votes
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "survey_id": 1,
-  "option_id": 1
-}
-```
-
-### 7. Health check
+### Flujo de uso recomendado
 
 ```
-GET http://localhost/api/health
+1. Auth / Login           →  {{token}} se guarda automáticamente
+2. Surveys / Crear        →  {{survey_id}} se guarda automáticamente
+3. Surveys / Añadir opción (×2 mínimo)  →  {{option_id}} se guarda
+4. Votes / Votar          →  usa {{survey_id}} y {{option_id}} ya guardados
+5. Votes / Votar (otra vez)  →  devuelve 400 "User already voted"
 ```
 
-Respuesta:
-```json
-{ "status": "ok" }
+### Tests automáticos por request
+
+Cada request tiene scripts en la pestaña **Tests** que se ejecutan automáticamente:
+
+| Request | Qué comprueba |
+|---------|--------------|
+| Health Check | Status 200, `status = "ok"` |
+| Registro | Status 201, mensaje `"User created"` |
+| Login | Status 200, campo `token` presente, formato `x.x.x` de JWT |
+| Listar encuestas | Status 200, respuesta es array |
+| Crear encuesta | Status 201, campo `id` numérico |
+| Ver encuesta | Status 200, contiene `survey` y `options` |
+| Añadir opción | Status 201, campo `id` presente |
+| Votar | Status 201 (primer voto) o 400 con `"already voted"` (doble voto) |
+
+### Respuestas de ejemplo guardadas
+
+Cada request incluye respuestas de ejemplo (pestaña **Examples**) con los cuerpos reales de éxito y error:
+
+| Request | Ejemplos guardados |
+|---------|--------------------|
+| Registro | 201 Created, 400 Contraseña débil, 400 Usuario ya existe |
+| Login | 200 Token JWT, 401 Credenciales inválidas, 429 Rate limit |
+| Listar encuestas | 200 con array, 401 sin token |
+| Crear encuesta | 201 Created, 400 Título faltante |
+| Ver encuesta | 200 con opciones, 404 no encontrada |
+| Añadir opción | 201 Created, 400 texto vacío |
+| Votar | 201 registrado, 400 ya votó, 401 sin token |
+
+### Endpoints de referencia rápida
+
+```
+GET  http://localhost/api/health                     — Sin auth
+POST http://localhost/auth/register                  — Sin auth
+POST http://localhost/auth/login                     — Sin auth
+GET  http://localhost/api/surveys                    — Bearer {{token}}
+POST http://localhost/api/surveys                    — Bearer {{token}}
+GET  http://localhost/api/surveys/{{survey_id}}      — Bearer {{token}}
+POST http://localhost/api/surveys/{{survey_id}}/options  — Bearer {{token}}
+POST http://localhost/api/votes                      — Bearer {{token}}
 ```
