@@ -1,13 +1,19 @@
 import pytest
 from app.main import create_app
+from app.database import db
+
 
 @pytest.fixture
 def client():
-    app = create_app()
-    app.config["TESTING"] = True
+    app = create_app(test_config={
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+    })
 
-    with app.test_client() as client:
-        yield client
+    with app.app_context():
+        db.create_all()
+        yield app.test_client()
+        db.drop_all()
 
 
 def test_register(client):
@@ -33,3 +39,5 @@ def test_login(client):
     })
 
     assert response.status_code == 200
+    data = response.get_json()
+    assert "token" in data

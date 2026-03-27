@@ -1,11 +1,15 @@
 import os
-from flask import Flask
+from flask import Flask, jsonify
 from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from app.database import init_db, db
 from app.routes.auth import auth_bp
 from app.routes.api import api_bp
 from app.routes.frontend import frontend_bp
+
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 load_dotenv()
 
@@ -22,33 +26,56 @@ for var in REQUIRED_ENV_VARS:
         raise RuntimeError(f"Missing required environment variable: {var}")
 
 
-def create_app():
+def create_app(test_config=None):
 
     app = Flask(__name__, template_folder="templates")
 
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
     app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
-
-    DB_USER = os.getenv("POSTGRES_USER")
-    DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-    DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
-    DB_PORT = os.getenv("POSTGRES_PORT", "5432")
-    DB_NAME = os.getenv("POSTGRES_DB")
-
-    app.config["SQLALCHEMY_DATABASE_URI"] = (
-        f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    )
-
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    if test_config:
+        app.config.update(test_config)
+    else:
+        DB_USER = os.getenv("POSTGRES_USER")
+        DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+        DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
+        DB_PORT = os.getenv("POSTGRES_PORT", "5432")
+        DB_NAME = os.getenv("POSTGRES_DB")
+
+        app.config["SQLALCHEMY_DATABASE_URI"] = (
+            f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        )
+
     init_db(app)
+    limiter.init_app(app)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(frontend_bp)
 
-    with app.app_context():
-        db.create_all()
+    # Import models so SQLAlchemy registers them before create_all
+    from app.models import user, survey  # noqa: F401
+
+    # Apply rate limits to auth endpoints
+    limiter.limit("10 per minute")(app.view_functions["auth.login"])
+    limiter.limit("5 per minute")(app.view_functions["auth.register"])
+
+    @app.errorhandler(404)
+    def not_found(e):
+        return jsonify({"error": "Not found"}), 404
+
+    @app.errorhandler(429)
+    def rate_limit_exceeded(e):
+        return jsonify({"error": "Too many requests, please try again later"}), 429
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        return jsonify({"error": "An internal error occurred"}), 500
+
+    if not test_config:
+        with app.app_context():
+            db.create_all()
 
     return app
 

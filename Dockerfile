@@ -31,7 +31,7 @@ FROM python:3.12-slim
 # Creamos usuario no root
 RUN useradd -m appuser
 
-WORKDIR /app
+WORKDIR /project
 
 # Solo librerías runtime necesarias (NO build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -44,14 +44,15 @@ COPY --from=builder /venv /venv
 
 ENV PATH="/venv/bin:$PATH"
 
-# Copiamos aplicación
-COPY ./app /app
+# Copiamos aplicación preservando la estructura del paquete app/
+COPY ./app /project/app
+COPY wsgi.py /project/wsgi.py
 
 # Cambiamos permisos
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /project
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "main:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "wsgi:app"]

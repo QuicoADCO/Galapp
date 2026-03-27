@@ -1,16 +1,9 @@
-from flask import Blueprint, request, jsonify
-import sqlite3
+from flask import Blueprint, request, jsonify, g
+from app.database import db
+from app.models.survey import Survey, SurveyOption, Vote
+from app.utils import token_required
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
-
-
-# -----------------------
-# DB helper
-# -----------------------
-def get_db():
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 # -----------------------
@@ -25,131 +18,119 @@ def health():
 # GET ALL SURVEYS
 # -----------------------
 @api_bp.route("/surveys", methods=["GET"])
+@token_required()
 def get_surveys():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM surveys")
-    surveys = [dict(row) for row in cursor.fetchall()]
-
-    conn.close()
-    return jsonify(surveys), 200
+    surveys = Survey.query.all()
+    result = [
+        {
+            "id": s.id,
+            "title": s.title,
+            "description": s.description,
+            "created_by": s.created_by,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+        }
+        for s in surveys
+    ]
+    return jsonify(result), 200
 
 
 # -----------------------
 # CREATE SURVEY
 # -----------------------
 @api_bp.route("/surveys", methods=["POST"])
+@token_required()
 def create_survey():
     data = request.get_json()
 
-    title = data.get("title")
-    description = data.get("description")
-    created_by = data.get("created_by")
+    title = data.get("title", "").strip()
+    description = data.get("description", "").strip()
 
     if not title:
         return jsonify({"error": "Title is required"}), 400
+    if len(title) > 200:
+        return jsonify({"error": "Title too long (max 200 chars)"}), 400
 
-    conn = get_db()
-    cursor = conn.cursor()
+    created_by = g.current_user["id"]
+    survey = Survey(title=title, description=description, created_by=created_by)
+    db.session.add(survey)
+    db.session.commit()
 
-    cursor.execute(
-        "INSERT INTO surveys (title, description, created_by) VALUES (?, ?, ?)",
-        (title, description, created_by),
-    )
-
-    conn.commit()
-    conn.close()
-
-    return jsonify({"message": "Survey created"}), 201
-
-
-# -----------------------
-# ADD OPTION TO SURVEY
-# -----------------------
-@api_bp.route("/surveys/<int:survey_id>/options", methods=["POST"])
-def add_option(survey_id):
-    data = request.get_json()
-    option_text = data.get("option_text")
-
-    if not option_text:
-        return jsonify({"error": "Option text required"}), 400
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "INSERT INTO survey_options (survey_id, option_text) VALUES (?, ?)",
-        (survey_id, option_text),
-    )
-
-    conn.commit()
-    conn.close()
-
-    return jsonify({"message": "Option added"}), 201
+    return jsonify({"message": "Survey created", "id": survey.id}), 201
 
 
 # -----------------------
 # GET SURVEY WITH OPTIONS
 # -----------------------
 @api_bp.route("/surveys/<int:survey_id>", methods=["GET"])
+@token_required()
 def get_survey(survey_id):
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM surveys WHERE id = ?", (survey_id,))
-    survey = cursor.fetchone()
+    survey = Survey.query.get(survey_id)
 
     if not survey:
         return jsonify({"error": "Survey not found"}), 404
 
-    cursor.execute(
-        "SELECT * FROM survey_options WHERE survey_id = ?", (survey_id,)
-    )
-    options = [dict(row) for row in cursor.fetchall()]
-
-    conn.close()
+    options = [
+        {"id": o.id, "option_text": o.option_text}
+        for o in survey.options
+    ]
 
     return jsonify({
-        "survey": dict(survey),
-        "options": options
+        "survey": {
+            "id": survey.id,
+            "title": survey.title,
+            "description": survey.description,
+            "created_by": survey.created_by,
+        },
+        "options": options,
     }), 200
+
+
+# -----------------------
+# ADD OPTION TO SURVEY
+# -----------------------
+@api_bp.route("/surveys/<int:survey_id>/options", methods=["POST"])
+@token_required()
+def add_option(survey_id):
+    survey = Survey.query.get(survey_id)
+    if not survey:
+        return jsonify({"error": "Survey not found"}), 404
+
+    data = request.get_json()
+    option_text = data.get("option_text", "").strip()
+
+    if not option_text:
+        return jsonify({"error": "Option text required"}), 400
+    if len(option_text) > 300:
+        return jsonify({"error": "Option text too long (max 300 chars)"}), 400
+
+    option = SurveyOption(survey_id=survey_id, option_text=option_text)
+    db.session.add(option)
+    db.session.commit()
+
+    return jsonify({"message": "Option added", "id": option.id}), 201
 
 
 # -----------------------
 # VOTE
 # -----------------------
 @api_bp.route("/votes", methods=["POST"])
+@token_required()
 def vote():
     data = request.get_json()
 
     survey_id = data.get("survey_id")
-    user_id = data.get("user_id")
     option_id = data.get("option_id")
+    user_id = g.current_user["id"]
 
-    if not all([survey_id, user_id, option_id]):
+    if not all([survey_id, option_id]):
         return jsonify({"error": "Missing fields"}), 400
 
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # ❗ evitar votos duplicados
-    cursor.execute(
-        "SELECT * FROM votes WHERE survey_id = ? AND user_id = ?",
-        (survey_id, user_id),
-    )
-    existing_vote = cursor.fetchone()
-
+    existing_vote = Vote.query.filter_by(survey_id=survey_id, user_id=user_id).first()
     if existing_vote:
-        conn.close()
         return jsonify({"error": "User already voted"}), 400
 
-    cursor.execute(
-        "INSERT INTO votes (survey_id, user_id, option_id) VALUES (?, ?, ?)",
-        (survey_id, user_id, option_id),
-    )
-
-    conn.commit()
-    conn.close()
+    new_vote = Vote(survey_id=survey_id, user_id=user_id, option_id=option_id)
+    db.session.add(new_vote)
+    db.session.commit()
 
     return jsonify({"message": "Vote recorded"}), 201
