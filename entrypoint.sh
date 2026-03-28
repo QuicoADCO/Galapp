@@ -6,5 +6,10 @@ set -e
 mkdir -p /project/app/static/uploads
 chown -R appuser:appuser /project/app/static/uploads
 
+# Crea el usuario admin inicial si no existe todavía.
+# El script es idempotente: si el usuario ya existe, no hace nada.
+cd /project
+gosu appuser python -m app.seed
+
 # Cede privilegios y ejecuta gunicorn como appuser
 exec gosu appuser gunicorn --bind 0.0.0.0:8000 wsgi:app

@@ -23,7 +23,7 @@ RUN mkdir -p /project/app/static/uploads \
 
 # Escribir el entrypoint DIRECTAMENTE en el Dockerfile para evitar
 # problemas de CRLF cuando se edita desde Windows
-RUN printf '#!/bin/sh\nset -e\nmkdir -p /project/app/static/uploads\nchown -R appuser:appuser /project/app/static/uploads\nchmod -R 775 /project/app/static/uploads\nexec gosu appuser gunicorn --bind 0.0.0.0:8000 wsgi:app\n' \
+RUN printf '#!/bin/sh\nset -e\nmkdir -p /project/app/static/uploads\nchown -R appuser:appuser /project/app/static/uploads\nchmod -R 775 /project/app/static/uploads\ncd /project && gosu appuser python -m app.seed\nexec gosu appuser gunicorn --bind 0.0.0.0:8000 wsgi:app\n' \
     > /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 8000
