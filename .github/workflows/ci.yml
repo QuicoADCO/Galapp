@@ -34,6 +34,7 @@ jobs:
       - name: Run tests
         run: pytest -v
         env:
+          PYTHONPATH: .
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           POSTGRES_USER: postgres
