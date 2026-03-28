@@ -73,6 +73,8 @@ def create_app(test_config=None):
     limiter.limit("5 per minute")(app.view_functions["auth.register"])
     limiter.limit("20 per minute")(app.view_functions["api.create_survey"])
     limiter.limit("60 per minute")(app.view_functions["api.vote"])
+    # Votos anónimos — más restrictivo para evitar flood sin autenticación
+    limiter.limit("30 per minute")(app.view_functions["api.public_vote"])
 
     @app.errorhandler(400)
     def bad_request(e):

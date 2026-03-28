@@ -1,15 +1,39 @@
-// Obtener el ID de la encuesta desde la URL  (/encuesta/5 → 5)
+// ── IDs y token ──────────────────────────────────────────────────────────────
 const surveyId = parseInt(window.location.pathname.split('/').pop(), 10);
-const token    = localStorage.getItem('token');
+const jwtToken = localStorage.getItem('token');
 
-if (!token) {
-    // Redirigir al login guardando la página actual como destino
-    window.location.href = `/login?siguiente=/encuesta/${surveyId}`;
+// Voter token para usuarios anónimos: UUID v4 persistente en localStorage
+function getVoterToken() {
+    let t = localStorage.getItem('voter_token');
+    if (!t) {
+        // Genera UUID v4
+        t = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+        localStorage.setItem('voter_token', t);
+    }
+    return t;
 }
 
+const voterToken = getVoterToken();
+
+// ── Cabeceras ─────────────────────────────────────────────────────────────────
 function authHdr() {
-    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+    if (jwtToken) {
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + jwtToken,
+        };
+    }
+    return {
+        'Content-Type': 'application/json',
+        'X-Voter-Token': voterToken,
+    };
 }
+
+// Decide si usar endpoints privados (JWT) o públicos (anónimo)
+const BASE = jwtToken ? '' : '/api/public';
 
 // ── NOTIFICACIÓN ──
 function toast(msg, type = 'success') {
@@ -21,17 +45,17 @@ function toast(msg, type = 'success') {
 
 function esc(s) {
     return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-        .replace(/'/g,'&#x27;');
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
 }
 
 // ── CABECERA ──
 function renderHeader() {
     const actionsEl = document.getElementById('header-actions');
-    if (token) {
+    if (jwtToken) {
         try {
-            const pl = JSON.parse(atob(token.split('.')[1]));
+            const pl = JSON.parse(atob(jwtToken.split('.')[1]));
             actionsEl.innerHTML = `
                 <span class="header-user">👤 ${esc(pl.username || '')}</span>
                 <a href="/dashboard" class="btn-header">Panel</a>
@@ -42,22 +66,26 @@ function renderHeader() {
             });
         } catch { /* token malformado */ }
     } else {
-        actionsEl.innerHTML = `<a href="/login?siguiente=/encuesta/${surveyId}" class="btn-header">Iniciar sesión</a>`;
+        actionsEl.innerHTML = `
+            <a href="/login?siguiente=/encuesta/${surveyId}" class="btn-header btn-header-outline">
+                Iniciar sesión
+            </a>
+            <a href="/register" class="btn-header">Registrarse</a>`;
     }
 }
 
-// ── CARGAR Y RENDERIZAR ENCUESTA ──
+// ── CARGAR Y RENDERIZAR ENCUESTA ─────────────────────────────────────────────
 async function cargarEncuesta() {
     renderHeader();
 
     const container = document.getElementById('vote-container');
 
-    // Datos de la encuesta
-    const res = await fetch(`/api/surveys/${surveyId}`, { headers: authHdr() });
-    if (res.status === 401) {
-        window.location.href = `/login?siguiente=/encuesta/${surveyId}`;
-        return;
-    }
+    // Datos de la encuesta (público o privado según login)
+    const surveyUrl  = jwtToken
+        ? `/api/surveys/${surveyId}`
+        : `/api/public/surveys/${surveyId}`;
+    const res = await fetch(surveyUrl, { headers: authHdr() });
+
     if (!res.ok) {
         container.innerHTML = `
             <div class="error-state">
@@ -73,8 +101,11 @@ async function cargarEncuesta() {
     const survey    = data.survey;
     const questions = data.questions || [];
 
-    // Votos previos del usuario
-    const votesRes = await fetch(`/api/surveys/${surveyId}/my-votes`, { headers: authHdr() });
+    // Votos previos
+    const votesUrl = jwtToken
+        ? `/api/surveys/${surveyId}/my-votes`
+        : `/api/public/surveys/${surveyId}/my-votes`;
+    const votesRes = await fetch(votesUrl, { headers: authHdr() });
     const myVotes  = votesRes.ok ? await votesRes.json() : [];
 
     const votedMap = {};
@@ -120,6 +151,10 @@ async function cargarEncuesta() {
         </div>`;
     }).join('');
 
+    const panelLink = jwtToken
+        ? `<a href="/dashboard" class="sv-link">← Volver al panel</a>`
+        : `<a href="/register" class="sv-link">Crear cuenta en Galapp →</a>`;
+
     container.innerHTML = `
         ${coverHtml}
         <div class="sv-header">
@@ -127,17 +162,16 @@ async function cargarEncuesta() {
             ${survey.description ? `<p class="sv-desc">${esc(survey.description)}</p>` : ''}
         </div>
         <div class="sv-questions">${questionsHtml || '<p class="sv-empty">Esta encuesta aún no tiene preguntas.</p>'}</div>
-        <div class="sv-bottom">
-            <a href="/dashboard" class="sv-link">← Volver al panel</a>
-        </div>`;
+        <div class="sv-bottom">${panelLink}</div>`;
 
-    // Event delegation para los botones de voto
+    // Event delegation
     container.addEventListener('click', e => {
         const btn = e.target.closest('.sv-vote-btn');
         if (btn) enviarVoto(btn);
     });
 }
 
+// ── ENVIAR VOTO ───────────────────────────────────────────────────────────────
 async function enviarVoto(btn) {
     const questionId = +btn.dataset.qid;
     const qBlock     = btn.closest('.sv-question');
@@ -152,15 +186,23 @@ async function enviarVoto(btn) {
     btn.disabled = true;
     btn.textContent = 'Enviando…';
 
+    const voteUrl = jwtToken
+        ? '/api/votes'
+        : `/api/public/surveys/${surveyId}/vote`;
+
     let allOk = true;
     for (const inp of selected) {
-        const res = await fetch('/api/votes', {
+        const body = jwtToken
+            ? { question_id: questionId, option_id: +inp.value }
+            : { question_id: questionId, option_id: +inp.value };
+
+        const res = await fetch(voteUrl, {
             method:  'POST',
             headers: authHdr(),
-            body:    JSON.stringify({ question_id: questionId, option_id: +inp.value }),
+            body:    JSON.stringify(body),
         });
         if (!res.ok) {
-            const d = await res.json();
+            const d = await res.json().catch(() => ({}));
             toast(d.error || 'Error al votar', 'error');
             allOk = false;
             break;

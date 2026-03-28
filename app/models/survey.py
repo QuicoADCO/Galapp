@@ -63,3 +63,23 @@ class Vote(db.Model):
         # Evita que el mismo usuario vote dos veces la misma opción
         db.UniqueConstraint("question_id", "option_id", "user_id", name="uq_question_option_user"),
     )
+
+
+class AnonVote(db.Model):
+    """Votos anónimos de personas que reciben el enlace compartido.
+
+    Se identifican por un voter_token UUID generado en el cliente y almacenado
+    en localStorage. No requieren registro ni autenticación.
+    """
+    __tablename__ = "anon_votes"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    voter_token  = db.Column(db.String(36), nullable=False, index=True)
+    question_id  = db.Column(db.Integer, db.ForeignKey("questions.id"), nullable=False)
+    option_id    = db.Column(db.Integer, db.ForeignKey("question_options.id"), nullable=False)
+    created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        # Un votante anónimo solo puede votar una vez por pregunta
+        db.UniqueConstraint("voter_token", "question_id", name="uq_anon_voter_question"),
+    )

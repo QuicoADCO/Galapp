@@ -4,7 +4,8 @@ import logging
 from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.exc import SQLAlchemyError
 from app.database import db
-from app.models.survey import Survey, Question, QuestionOption, Vote
+import re
+from app.models.survey import Survey, Question, QuestionOption, Vote, AnonVote
 from app.utils import token_required
 
 log = logging.getLogger(__name__)
@@ -348,10 +349,14 @@ def survey_results(survey_id):
 
     questions = []
     for q in survey.questions:
-        total = Vote.query.filter_by(question_id=q.id).count()
+        reg_total  = Vote.query.filter_by(question_id=q.id).count()
+        anon_total = AnonVote.query.filter_by(question_id=q.id).count()
+        total      = reg_total + anon_total
         options = []
         for o in q.options:
-            count = Vote.query.filter_by(option_id=o.id).count()
+            reg_count  = Vote.query.filter_by(option_id=o.id).count()
+            anon_count = AnonVote.query.filter_by(option_id=o.id).count()
+            count = reg_count + anon_count
             options.append({
                 "id":         o.id,
                 "text":       o.text,
@@ -368,3 +373,127 @@ def survey_results(survey_id):
         })
 
     return jsonify({"questions": questions}), 200
+
+
+# ── ENDPOINTS PÚBLICOS (sin JWT) — votación anónima por enlace compartido ─────
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
+
+def _voter_token():
+    """Extrae y valida el voter_token de la cabecera X-Voter-Token."""
+    token = request.headers.get("X-Voter-Token", "").strip().lower()
+    if not _UUID_RE.match(token):
+        return None
+    return token
+
+
+@api_bp.route("/public/surveys/<int:survey_id>", methods=["GET"])
+def public_survey(survey_id):
+    """Devuelve datos de la encuesta sin requerir autenticación."""
+    survey = db.session.get(Survey, survey_id)
+    if not survey:
+        return jsonify({"error": "Survey not found"}), 404
+
+    questions = []
+    for q in survey.questions:
+        options = [
+            {
+                "id":        o.id,
+                "text":      o.text,
+                "image_url": _img_url(o.image_filename),
+            }
+            for o in q.options
+        ]
+        questions.append({
+            "id":    q.id,
+            "text":  q.text,
+            "type":  q.question_type,
+            "order": q.order,
+            "options": options,
+        })
+
+    return jsonify({
+        "survey": {
+            "id":          survey.id,
+            "title":       survey.title,
+            "description": survey.description,
+            "image_url":   _img_url(survey.image_filename),
+        },
+        "questions": questions,
+    }), 200
+
+
+@api_bp.route("/public/surveys/<int:survey_id>/my-votes", methods=["GET"])
+def public_my_votes(survey_id):
+    """Devuelve los votos previos del votante anónimo en esta encuesta."""
+    token = _voter_token()
+    if not token:
+        return jsonify([]), 200
+
+    survey = db.session.get(Survey, survey_id)
+    if not survey:
+        return jsonify([]), 200
+
+    q_ids = [q.id for q in survey.questions]
+    votes = AnonVote.query.filter(
+        AnonVote.voter_token == token,
+        AnonVote.question_id.in_(q_ids),
+    ).all()
+
+    return jsonify([
+        {"question_id": v.question_id, "option_id": v.option_id}
+        for v in votes
+    ]), 200
+
+
+@api_bp.route("/public/surveys/<int:survey_id>/vote", methods=["POST"])
+def public_vote(survey_id):
+    """Registra un voto anónimo. Requiere X-Voter-Token (UUID)."""
+    token = _voter_token()
+    if not token:
+        return jsonify({"error": "Voter token inválido o ausente"}), 400
+
+    data        = request.get_json(silent=True) or {}
+    question_id = data.get("question_id")
+    option_id   = data.get("option_id")
+
+    if not question_id or not option_id:
+        return jsonify({"error": "question_id y option_id son requeridos"}), 400
+
+    survey = db.session.get(Survey, survey_id)
+    if not survey:
+        return jsonify({"error": "Survey not found"}), 404
+
+    question = db.session.get(Question, question_id)
+    if not question or question.survey_id != survey_id:
+        return jsonify({"error": "Pregunta no válida para esta encuesta"}), 400
+
+    option = db.session.get(QuestionOption, option_id)
+    if not option or option.question_id != question_id:
+        return jsonify({"error": "Opción no válida para esta pregunta"}), 400
+
+    # Unicidad: un token solo puede votar una vez por pregunta (tipo single)
+    if question.question_type == "single":
+        existing = AnonVote.query.filter_by(
+            voter_token=token, question_id=question_id
+        ).first()
+        if existing:
+            return jsonify({"error": "Ya votaste en esta pregunta"}), 400
+
+    db.session.add(AnonVote(
+        voter_token=token,
+        question_id=question_id,
+        option_id=option_id,
+    ))
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Error recording anon vote q=%s opt=%s token=%s",
+                      question_id, option_id, token)
+        return jsonify({"error": "Error al registrar el voto"}), 500
+
+    return jsonify({"message": "Vote recorded"}), 201
