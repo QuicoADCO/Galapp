@@ -13,6 +13,10 @@ venv/
 postgres_data/
 *.log
 
+# Uploads: imágenes subidas por usuarios (no van al repo, solo el .gitkeep)
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+
 # VSCode
 .vscode/
 
