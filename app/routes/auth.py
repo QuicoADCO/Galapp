@@ -1,9 +1,13 @@
 import re
+import logging
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.exc import SQLAlchemyError
 from app.database import db
 from app.models.user import User
 from app.utils import generate_token
+
+log = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -52,7 +56,12 @@ def register():
     )
 
     db.session.add(new_user)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Error registering user")
+        return jsonify({"error": "Error interno al crear el usuario"}), 500
 
     return jsonify({"message": "User created"}), 201
 

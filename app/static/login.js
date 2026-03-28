@@ -18,13 +18,20 @@ document.getElementById('login-form').addEventListener('submit', async function 
 
         if (response.ok) {
             localStorage.setItem('token', data.token);
-            window.location.href = '/dashboard';
+            // Open-redirect prevention: only allow relative paths starting with '/'
+            // and explicitly reject protocol-relative URLs like '//evil.com'
+            const params    = new URLSearchParams(window.location.search);
+            const siguiente = params.get('siguiente') || '';
+            const destino   = (siguiente.startsWith('/') && !siguiente.startsWith('//'))
+                ? siguiente
+                : '/dashboard';
+            window.location.href = destino;
         } else {
-            errorEl.textContent = data.error || 'Login failed.';
+            errorEl.textContent = data.error || 'Error al iniciar sesión.';
             errorEl.style.display = 'block';
         }
-    } catch (err) {
-        errorEl.textContent = 'Connection error. Try again.';
+    } catch {
+        errorEl.textContent = 'Error de conexión. Inténtalo de nuevo.';
         errorEl.style.display = 'block';
     }
 });

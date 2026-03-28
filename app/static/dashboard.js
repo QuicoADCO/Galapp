@@ -7,9 +7,8 @@ function parseJwt(t) {
 
 const pl       = parseJwt(token);
 const username = pl.username || '?';
-const role     = pl.role || 'user';
+const role     = pl.role || 'usuario';
 
-// Populate sidebar & stats
 document.getElementById('avatar').textContent     = username[0].toUpperCase();
 document.getElementById('sb-username').textContent = username;
 document.getElementById('sb-role').textContent    = role;
@@ -19,7 +18,7 @@ function authHdr() {
     return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
 }
 
-// ── TOAST ──
+// ── NOTIFICACIÓN ──
 function toast(msg, type = 'success') {
     const el = document.getElementById('toast');
     el.textContent = msg;
@@ -27,15 +26,29 @@ function toast(msg, type = 'success') {
     setTimeout(() => { el.className = 'toast'; }, 3000);
 }
 
-// ── SECTIONS ──
+// ── SECCIONES ──
 function showSection(_name, btn) {
     document.getElementById('sec-surveys').style.display = '';
-    document.getElementById('topbar-title').textContent  = 'Surveys';
+    document.getElementById('topbar-title').textContent  = 'Encuestas';
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
 
-// ── LOAD SURVEYS ──
+// ── COMPARTIR ──
+function compartirEncuesta(surveyId) {
+    const url = `${window.location.origin}/encuesta/${surveyId}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+            toast('¡Enlace copiado al portapapeles!');
+        }).catch(() => {
+            toast(`Enlace: ${url}`, 'success');
+        });
+    } else {
+        toast(`Enlace: /encuesta/${surveyId}`, 'success');
+    }
+}
+
+// ── CARGAR ENCUESTAS ──
 async function loadSurveys() {
     const res = await fetch('/api/surveys', { headers: authHdr() });
     if (res.status === 401) { localStorage.removeItem('token'); window.location.href = '/login'; return; }
@@ -49,8 +62,8 @@ async function loadSurveys() {
         grid.innerHTML = `
             <div class="empty">
                 <div class="icon">📋</div>
-                <h3>No surveys yet</h3>
-                <p>Create the first one with the button above</p>
+                <h3>Aún no hay encuestas</h3>
+                <p>Crea la primera con el botón de arriba</p>
             </div>`;
         document.getElementById('st-options').textContent = '0';
         return;
@@ -65,114 +78,126 @@ async function loadSurveys() {
 }
 
 async function buildCard(survey) {
-    const res  = await fetch(`/api/surveys/${survey.id}`, { headers: authHdr() });
-    const data = await res.json();
-    const opts = data.options || [];
+    const detailRes  = await fetch(`/api/surveys/${survey.id}`, { headers: authHdr() });
+    const detail     = await detailRes.json();
+    const questions  = detail.questions || [];
+    const imageUrl   = detail.survey.image_url || null;
+
+    const votesRes = await fetch(`/api/surveys/${survey.id}/my-votes`, { headers: authHdr() });
+    const myVotes  = votesRes.ok ? await votesRes.json() : [];
+
+    const votedMap = {};
+    for (const v of myVotes) {
+        if (!votedMap[v.question_id]) votedMap[v.question_id] = new Set();
+        votedMap[v.question_id].add(v.option_id);
+    }
+
+    let totalOpts = 0;
+    for (const q of questions) totalOpts += q.options.length;
+
+    const questionsHtml = questions.map(q => {
+        const inputType    = q.type === 'multiple' ? 'checkbox' : 'radio';
+        const alreadyVoted = votedMap[q.id] && votedMap[q.id].size > 0;
+
+        const optionsHtml = q.options.map(o => {
+            const checked  = votedMap[q.id] && votedMap[q.id].has(o.id);
+            const disabled = alreadyVoted ? 'disabled' : '';
+            return `
+            <label class="vote-option${checked ? ' voted' : ''}${o.image_url ? ' has-image' : ''}">
+                <input type="${inputType}" name="q${survey.id}_${q.id}" value="${o.id}" ${checked ? 'checked' : ''} ${disabled}>
+                ${o.image_url ? `<img src="${esc(o.image_url)}" class="opt-img" alt="${esc(o.text)}" loading="lazy">` : ''}
+                <span class="opt-label">${esc(o.text)}</span>
+            </label>`;
+        }).join('');
+
+        const footer = alreadyVoted
+            ? `<div class="voted-indicator"><span>✓</span> Votado</div>`
+            : `<button type="button" class="btn btn-success btn-sm vote-btn"
+                   data-survey-id="${survey.id}" data-question-id="${q.id}">
+                   Votar
+               </button>`;
+
+        const typeLbl = q.type === 'single' ? 'Única' : 'Múltiple';
+
+        return `
+        <div class="question-block" data-qid="${q.id}">
+            <div class="q-meta">
+                <span class="q-num">P${q.order + 1}</span>
+                <span class="q-type-badge ${q.type}">${typeLbl}</span>
+            </div>
+            <div class="q-text">${esc(q.text)}</div>
+            <div class="q-options">${optionsHtml || '<p class="q-empty">Sin opciones todavía.</p>'}</div>
+            <div class="q-footer">${footer}</div>
+        </div>`;
+    }).join('');
 
     const el = document.createElement('div');
     el.className = 'survey-card';
     el.innerHTML = `
-        <div class="survey-tag">Survey #${survey.id}</div>
+        ${imageUrl ? `<div class="card-cover"><img src="${esc(imageUrl)}" alt="${esc(survey.title)}" loading="lazy"></div>` : ''}
+        <div class="card-top-row">
+            <div class="survey-tag">Encuesta #${survey.id}</div>
+            <button class="btn-share-survey" data-share-id="${survey.id}" title="Copiar enlace para compartir">
+                🔗 Compartir
+            </button>
+        </div>
         <div class="survey-title">${esc(survey.title)}</div>
-        <div class="survey-desc">${esc(survey.description || '')}</div>
-        <form class="options-vote" onsubmit="vote(event, ${survey.id})">
-            ${opts.map(o => `
-            <label class="vote-option">
-                <input type="radio" name="o${survey.id}" value="${o.id}" required>
-                ${esc(o.option_text)}
-            </label>`).join('')}
-            ${opts.length === 0
-                ? '<p style="font-size:13px;color:var(--muted)">No options yet.</p>'
-                : ''}
-            <div class="card-footer">
-                <span class="card-meta">${opts.length} option${opts.length !== 1 ? 's' : ''}</span>
-                ${opts.length > 0
-                    ? `<button type="submit" class="btn btn-success btn-sm">🗳️ Vote</button>`
-                    : ''}
-            </div>
-        </form>`;
-    return { el, n: opts.length };
+        ${survey.description ? `<div class="survey-desc">${esc(survey.description)}</div>` : ''}
+        <div class="survey-questions">
+            ${questions.length === 0
+                ? '<p style="font-size:13px;color:var(--muted)">Sin preguntas todavía.</p>'
+                : questionsHtml}
+        </div>`;
+
+    el.addEventListener('click', e => {
+        const shareBtn = e.target.closest('.btn-share-survey');
+        if (shareBtn) { compartirEncuesta(+shareBtn.dataset.shareId); return; }
+
+        const voteBtn = e.target.closest('.vote-btn');
+        if (voteBtn) submitVote(voteBtn);
+    });
+
+    return { el, n: totalOpts };
 }
 
-async function vote(e, surveyId) {
-    e.preventDefault();
-    const sel = e.target.querySelector(`input[name="o${surveyId}"]:checked`);
-    if (!sel) return;
+async function submitVote(btn) {
+    const surveyId   = +btn.dataset.surveyId;
+    const questionId = +btn.dataset.questionId;
+    const qBlock     = btn.closest('.question-block');
+    const inputs     = qBlock.querySelectorAll(`input[name="q${surveyId}_${questionId}"]`);
+    const selected   = Array.from(inputs).filter(i => i.checked);
 
-    const res  = await fetch('/api/votes', {
-        method: 'POST',
-        headers: authHdr(),
-        body: JSON.stringify({ survey_id: surveyId, option_id: +sel.value })
-    });
-    const data = await res.json();
-
-    if (res.ok) {
-        toast('Vote recorded!');
-        e.target.querySelectorAll('input').forEach(i => i.disabled = true);
-        const btn = e.target.querySelector('button[type="submit"]');
-        btn.textContent = '✓ Voted';
-        btn.disabled = true;
-        btn.style.opacity = '0.6';
-    } else {
-        toast(data.error || 'Vote failed', 'error');
+    if (selected.length === 0) {
+        toast('Selecciona al menos una opción.', 'error');
+        return;
     }
-}
 
-// ── CREATE SURVEY ──
-function openModal()  { document.getElementById('modal').classList.add('open'); }
-function closeModal() { document.getElementById('modal').classList.remove('open'); }
+    btn.disabled = true;
 
-function addOpt() {
-    const list  = document.getElementById('opt-list');
-    const count = list.children.length + 1;
-    const row   = document.createElement('div');
-    row.className = 'option-row';
-    row.innerHTML = `<input type="text" placeholder="Option ${count}">
-                     <button class="btn-remove" onclick="removeOpt(this)">×</button>`;
-    list.appendChild(row);
-}
-
-function removeOpt(btn) {
-    const list = document.getElementById('opt-list');
-    if (list.children.length > 1) btn.parentElement.remove();
-}
-
-async function createSurvey() {
-    const title  = document.getElementById('f-title').value.trim();
-    const desc   = document.getElementById('f-desc').value.trim();
-    const opts   = Array.from(document.querySelectorAll('#opt-list .option-row input'))
-                        .map(i => i.value.trim()).filter(Boolean);
-
-    if (!title)          { toast('Title is required', 'error'); return; }
-    if (opts.length < 2) { toast('Add at least 2 options', 'error'); return; }
-
-    const res  = await fetch('/api/surveys', {
-        method: 'POST',
-        headers: authHdr(),
-        body: JSON.stringify({ title, description: desc })
-    });
-    const data = await res.json();
-    if (!res.ok) { toast(data.error || 'Error creating survey', 'error'); return; }
-
-    for (const opt of opts) {
-        await fetch(`/api/surveys/${data.id}/options`, {
-            method: 'POST',
+    let allOk = true;
+    for (const inp of selected) {
+        const res = await fetch('/api/votes', {
+            method:  'POST',
             headers: authHdr(),
-            body: JSON.stringify({ option_text: opt })
+            body:    JSON.stringify({ question_id: questionId, option_id: +inp.value }),
         });
+        if (!res.ok) {
+            const d = await res.json();
+            toast(d.error || 'Error al votar', 'error');
+            allOk = false;
+            break;
+        }
     }
 
-    closeModal();
-    toast('Survey created!');
-
-    // Reset form
-    document.getElementById('f-title').value = '';
-    document.getElementById('f-desc').value  = '';
-    document.getElementById('opt-list').innerHTML = `
-        <div class="option-row"><input type="text" placeholder="Option 1"><button class="btn-remove" onclick="removeOpt(this)">×</button></div>
-        <div class="option-row"><input type="text" placeholder="Option 2"><button class="btn-remove" onclick="removeOpt(this)">×</button></div>`;
-
-    loadSurveys();
+    if (allOk) {
+        inputs.forEach(i => i.disabled = true);
+        selected.forEach(i => i.closest('.vote-option').classList.add('voted'));
+        qBlock.querySelector('.q-footer').innerHTML =
+            `<div class="voted-indicator"><span>✓</span> Votado</div>`;
+        toast('¡Voto registrado!');
+    } else {
+        btn.disabled = false;
+    }
 }
 
 function logout() {
@@ -183,7 +208,8 @@ function logout() {
 function esc(s) {
     return String(s)
         .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+        .replace(/'/g,'&#x27;');
 }
 
 loadSurveys();

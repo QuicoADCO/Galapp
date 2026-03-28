@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva encuesta · Galapp</title>
+    <link rel="stylesheet" href="/static/create_survey.css">
+</head>
+<body>
+
+<div class="page-wrapper">
+
+    <!-- HEADER -->
+    <header class="top-header">
+        <a href="/dashboard" class="back-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            Volver al panel
+        </a>
+        <div class="header-logo">Gal<span>app</span></div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="form-container">
+
+        <div class="form-header">
+            <h1>Nueva encuesta</h1>
+            <p>Crea preguntas con opciones — añade imágenes para hacerla visual</p>
+        </div>
+
+        <!-- ERROR / SUCCESS BANNER -->
+        <div class="banner" id="banner"></div>
+
+        <form id="survey-form" novalidate>
+
+            <!-- ── COVER IMAGE ── -->
+            <section class="form-section">
+                <h2 class="section-title">Imagen de portada <span class="optional">opcional</span></h2>
+
+                <div class="drop-zone" id="drop-zone">
+                    <div class="drop-content" id="drop-content">
+                        <div class="drop-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                            </svg>
+                        </div>
+                        <p class="drop-text">Arrastra y suelta una imagen aquí</p>
+                        <p class="drop-sub">o</p>
+                        <label class="btn-browse" for="image-input">Explorar archivo</label>
+                        <p class="drop-hint">JPG, PNG, GIF, WEBP · máx. 4 MB</p>
+                    </div>
+                    <img id="image-preview" class="image-preview hidden" alt="Cover preview">
+                    <button type="button" class="btn-remove-img hidden" id="btn-remove-img">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                        Eliminar
+                    </button>
+                    <input type="file" id="image-input" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="file-input-hidden">
+                </div>
+            </section>
+
+            <!-- ── DETAILS ── -->
+            <section class="form-section">
+                <h2 class="section-title">Detalles de la encuesta</h2>
+
+                <div class="form-group">
+                    <label for="f-title">Título <span class="required">*</span></label>
+                    <input type="text" id="f-title" name="title"
+                           placeholder="Ej: ¿Quién debería ser el próximo presidente?"
+                           maxlength="200" required>
+                    <span class="char-count" id="title-count">0 / 200</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="f-desc">Descripción <span class="optional">opcional</span></label>
+                    <textarea id="f-desc" name="description"
+                              placeholder="Da contexto a los votantes..."
+                              maxlength="500" rows="3"></textarea>
+                    <span class="char-count" id="desc-count">0 / 500</span>
+                </div>
+            </section>
+
+            <!-- ── QUESTIONS ── -->
+            <section class="form-section">
+                <h2 class="section-title">
+                    Preguntas <span class="required">*</span>
+                    <span class="optional">(mín. 1 pregunta, 2 opciones cada una)</span>
+                </h2>
+
+                <div class="questions-list" id="questions-list"></div>
+
+                <button type="button" class="btn-add-question" id="btn-add-question">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Añadir pregunta
+                </button>
+            </section>
+
+            <!-- ── SUBMIT ── -->
+            <div class="form-actions">
+                <a href="/dashboard" class="btn btn-ghost">Cancelar</a>
+                <button type="submit" class="btn btn-primary" id="btn-submit">
+                    <span id="btn-text">Crear encuesta</span>
+                    <span id="btn-spinner" class="spinner hidden"></span>
+                </button>
+            </div>
+
+        </form>
+    </main>
+</div>
+
+<script src="/static/create_survey.js"></script>
+</body>
+</html>

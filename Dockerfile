@@ -1,58 +1,31 @@
-# -------------------------
-# STAGE 1 — Builder
-# -------------------------
-FROM python:3.12-slim AS builder
-
-WORKDIR /app
-
-# Instalamos solo lo necesario para compilar dependencias
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-
-# Creamos entorno virtual
-RUN python -m venv /venv
-
-ENV PATH="/venv/bin:$PATH"
-
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-
-
-# -------------------------
-# STAGE 2 — Runtime (LIMPIO)
-# -------------------------
 FROM python:3.12-slim
 
-# Creamos usuario no root
+# gosu: cede privilegios root→appuser de forma segura en el entrypoint
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd -m appuser
 
 WORKDIR /project
 
-# Solo librerías runtime necesarias (NO build-essential)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiamos entorno virtual ya compilado
-COPY --from=builder /venv /venv
+COPY ./app    /project/app
+COPY wsgi.py  /project/wsgi.py
 
-ENV PATH="/venv/bin:$PATH"
+# Crear directorio de uploads antes del chown
+RUN mkdir -p /project/app/static/uploads \
+    && chown -R appuser:appuser /project
 
-# Copiamos aplicación preservando la estructura del paquete app/
-COPY ./app /project/app
-COPY wsgi.py /project/wsgi.py
-
-# Cambiamos permisos
-RUN chown -R appuser:appuser /project
-
-USER appuser
+# Escribir el entrypoint DIRECTAMENTE en el Dockerfile para evitar
+# problemas de CRLF cuando se edita desde Windows
+RUN printf '#!/bin/sh\nset -e\nmkdir -p /project/app/static/uploads\nchown -R appuser:appuser /project/app/static/uploads\nchmod -R 775 /project/app/static/uploads\nexec gosu appuser gunicorn --bind 0.0.0.0:8000 wsgi:app\n' \
+    > /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "wsgi:app"]
+ENTRYPOINT ["/entrypoint.sh"]

@@ -11,7 +11,7 @@ document.getElementById('register-form').addEventListener('submit', async functi
     msgEl.className = 'msg';
 
     if (password !== confirm) {
-        msgEl.textContent = 'Passwords do not match.';
+        msgEl.textContent = 'Las contraseñas no coinciden.';
         msgEl.classList.add('error');
         msgEl.style.display = 'block';
         return;
@@ -27,17 +27,17 @@ document.getElementById('register-form').addEventListener('submit', async functi
         const data = await response.json();
 
         if (response.ok) {
-            msgEl.textContent = 'Account created! Redirecting to login...';
+            msgEl.textContent = '¡Cuenta creada! Redirigiendo al inicio de sesión...';
             msgEl.classList.add('success');
             msgEl.style.display = 'block';
             setTimeout(() => window.location.href = '/login', 1500);
         } else {
-            msgEl.textContent = data.error || 'Registration failed.';
+            msgEl.textContent = data.error || 'Error al registrarse.';
             msgEl.classList.add('error');
             msgEl.style.display = 'block';
         }
-    } catch (err) {
-        msgEl.textContent = 'Connection error. Try again.';
+    } catch {
+        msgEl.textContent = 'Error de conexión. Inténtalo de nuevo.';
         msgEl.classList.add('error');
         msgEl.style.display = 'block';
     }

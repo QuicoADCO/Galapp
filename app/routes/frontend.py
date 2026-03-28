@@ -21,3 +21,13 @@ def register_view():
 @frontend_bp.route("/dashboard")
 def dashboard_view():
     return render_template("dashboard.html")
+
+
+@frontend_bp.route("/create-survey")
+def create_survey_view():
+    return render_template("create_survey.html")
+
+
+@frontend_bp.route("/encuesta/<int:survey_id>")
+def survey_vote_view(survey_id):
+    return render_template("survey_vote.html")

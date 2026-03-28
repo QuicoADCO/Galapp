@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Votar · Galapp</title>
+    <link rel="stylesheet" href="/static/survey_vote.css">
+</head>
+<body>
+
+<div class="page-wrapper">
+
+    <!-- CABECERA -->
+    <header class="top-header">
+        <div class="header-logo">Gal<span>app</span></div>
+        <div class="header-actions" id="header-actions">
+            <!-- Se rellena por JS según si el usuario está logueado -->
+        </div>
+    </header>
+
+    <!-- CONTENIDO -->
+    <main class="vote-container" id="vote-container">
+        <div class="loading-state">
+            <div class="spinner-big"></div>
+            <p>Cargando encuesta…</p>
+        </div>
+    </main>
+
+</div>
+
+<!-- NOTIFICACIÓN -->
+<div class="toast" id="toast"></div>
+
+<script src="/static/survey_vote.js"></script>
+</body>
+</html>

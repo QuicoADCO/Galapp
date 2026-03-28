@@ -1,136 +1,368 @@
-from flask import Blueprint, request, jsonify, g
+import os
+import uuid
+import logging
+from flask import Blueprint, request, jsonify, g, current_app
+from sqlalchemy.exc import SQLAlchemyError
 from app.database import db
-from app.models.survey import Survey, SurveyOption, Vote
+from app.models.survey import Survey, Question, QuestionOption, Vote
 from app.utils import token_required
+
+log = logging.getLogger(__name__)
+
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
+MAX_IMAGE_BYTES    = 4 * 1024 * 1024  # 4 MB
+
+# Magic-byte signatures for allowed image types (OWASP file upload validation)
+_MAGIC = {
+    b"\xff\xd8\xff":           "jpg",   # JPEG
+    b"\x89PNG\r\n\x1a\n":     "png",   # PNG
+    b"GIF87a":                 "gif",   # GIF87a
+    b"GIF89a":                 "gif",   # GIF89a
+    b"RIFF":                   "webp",  # WEBP (bytes 0-3; bytes 8-11 are "WEBP")
+}
+
+def _check_magic(file) -> bool:
+    """Return True if the first bytes match a known image signature."""
+    header = file.read(12)
+    file.seek(0)
+    for magic, _ in _MAGIC.items():
+        if header.startswith(magic):
+            # Extra check for WEBP: bytes 8-11 must be b"WEBP"
+            if magic == b"RIFF":
+                return header[8:12] == b"WEBP"
+            return True
+    return False
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 
-# -----------------------
-# HEALTH CHECK
-# -----------------------
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _save_image(file):
+    """Validate and save an uploaded image. Returns the stored filename or raises ValueError."""
+    # 1. Extension whitelist
+    if not _allowed_file(file.filename):
+        raise ValueError("Image type not allowed. Use JPG, PNG, GIF or WEBP.")
+    # 2. Size limit
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    if size > MAX_IMAGE_BYTES:
+        raise ValueError("Image exceeds the 4 MB size limit.")
+    # 3. Magic-byte validation — prevents disguised executables
+    if not _check_magic(file):
+        raise ValueError("File content does not match an allowed image type.")
+    # 4. Store with a random UUID name (no user-controlled characters in path)
+    # os.path.basename() strips directory traversal (e.g. "../../evil.jpg" → "evil.jpg")
+    safe_name  = os.path.basename(file.filename)
+    ext        = safe_name.rsplit(".", 1)[1].lower()
+    filename   = f"{uuid.uuid4().hex}.{ext}"
+    upload_dir = os.path.join(current_app.root_path, "static", "uploads")
+    try:
+        os.makedirs(upload_dir, exist_ok=True)
+        file.save(os.path.join(upload_dir, filename))
+    except OSError as e:
+        log.exception("Could not save uploaded file to %s", upload_dir)
+        raise ValueError(f"No se pudo guardar la imagen: {e.strerror}") from e
+    return filename
+
+
+def _img_url(filename):
+    # os.path.basename() strips any path traversal components stored in DB
+    if not filename:
+        return None
+    safe = os.path.basename(filename)
+    return f"/static/uploads/{safe}" if safe else None
+
+
+def _question_dict(q):
+    return {
+        "id":    q.id,
+        "text":  q.text,
+        "type":  q.question_type,
+        "order": q.order,
+        "options": [
+            {
+                "id":        o.id,
+                "text":      o.text,
+                "image_url": _img_url(o.image_filename),
+            }
+            for o in q.options
+        ],
+    }
+
+
+# ── HEALTH ────────────────────────────────────────────────────────────────────
+
 @api_bp.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
 
-# -----------------------
-# GET ALL SURVEYS
-# -----------------------
+# ── SURVEYS ───────────────────────────────────────────────────────────────────
+
 @api_bp.route("/surveys", methods=["GET"])
 @token_required()
 def get_surveys():
     surveys = Survey.query.all()
-    result = [
+    return jsonify([
         {
-            "id": s.id,
-            "title": s.title,
-            "description": s.description,
-            "created_by": s.created_by,
-            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "id":             s.id,
+            "title":          s.title,
+            "description":    s.description,
+            "image_url":      _img_url(s.image_filename),
+            "question_count": len(s.questions),
+            "created_by":     s.created_by,
+            "created_at":     s.created_at.isoformat() if s.created_at else None,
         }
         for s in surveys
-    ]
-    return jsonify(result), 200
+    ]), 200
 
 
-# -----------------------
-# CREATE SURVEY
-# -----------------------
 @api_bp.route("/surveys", methods=["POST"])
 @token_required()
 def create_survey():
-    data = request.get_json()
-
-    title = data.get("title", "").strip()
-    description = data.get("description", "").strip()
+    is_multipart = request.content_type and "multipart/form-data" in request.content_type
+    if is_multipart:
+        title       = (request.form.get("title") or "").strip()
+        description = (request.form.get("description") or "").strip()
+        image_file  = request.files.get("image")
+    else:
+        data        = request.get_json(silent=True) or {}
+        title       = data.get("title", "").strip()
+        description = data.get("description", "").strip()
+        image_file  = None
 
     if not title:
         return jsonify({"error": "Title is required"}), 400
     if len(title) > 200:
         return jsonify({"error": "Title too long (max 200 chars)"}), 400
 
-    created_by = g.current_user["id"]
-    survey = Survey(title=title, description=description, created_by=created_by)
+    image_filename = None
+    if image_file and image_file.filename:
+        try:
+            image_filename = _save_image(image_file)
+        except (ValueError, OSError) as e:
+            return jsonify({"error": str(e)}), 400
+
+    survey = Survey(
+        title=title,
+        description=description,
+        image_filename=image_filename,
+        created_by=g.current_user["id"],
+    )
     db.session.add(survey)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Error creating survey")
+        return jsonify({"error": "Database error creating survey"}), 500
 
-    return jsonify({"message": "Survey created", "id": survey.id}), 201
+    return jsonify({"message": "Survey created", "id": survey.id,
+                    "image_url": _img_url(image_filename)}), 201
 
 
-# -----------------------
-# GET SURVEY WITH OPTIONS
-# -----------------------
 @api_bp.route("/surveys/<int:survey_id>", methods=["GET"])
 @token_required()
 def get_survey(survey_id):
-    survey = Survey.query.get(survey_id)
-
+    survey = db.session.get(Survey, survey_id)
     if not survey:
         return jsonify({"error": "Survey not found"}), 404
-
-    options = [
-        {"id": o.id, "option_text": o.option_text}
-        for o in survey.options
-    ]
 
     return jsonify({
         "survey": {
-            "id": survey.id,
-            "title": survey.title,
+            "id":          survey.id,
+            "title":       survey.title,
             "description": survey.description,
-            "created_by": survey.created_by,
+            "image_url":   _img_url(survey.image_filename),
+            "created_by":  survey.created_by,
         },
-        "options": options,
+        "questions": [_question_dict(q) for q in survey.questions],
     }), 200
 
 
-# -----------------------
-# ADD OPTION TO SURVEY
-# -----------------------
-@api_bp.route("/surveys/<int:survey_id>/options", methods=["POST"])
+# ── QUESTIONS ─────────────────────────────────────────────────────────────────
+
+@api_bp.route("/surveys/<int:survey_id>/questions", methods=["POST"])
 @token_required()
-def add_option(survey_id):
-    survey = Survey.query.get(survey_id)
+def add_question(survey_id):
+    survey = db.session.get(Survey, survey_id)
     if not survey:
         return jsonify({"error": "Survey not found"}), 404
+    # IDOR prevention: only the survey creator can add questions
+    if survey.created_by != g.current_user["id"]:
+        return jsonify({"error": "No autorizado"}), 403
 
-    data = request.get_json()
-    option_text = data.get("option_text", "").strip()
+    data  = request.get_json(silent=True) or {}
+    text  = (data.get("text") or "").strip()
+    qtype = data.get("type", "single")
 
-    if not option_text:
-        return jsonify({"error": "Option text required"}), 400
-    if len(option_text) > 300:
+    if not text:
+        return jsonify({"error": "Question text is required"}), 400
+    if len(text) > 500:
+        return jsonify({"error": "Question text too long (max 500 chars)"}), 400
+    if qtype not in ("single", "multiple"):
+        return jsonify({"error": "type must be 'single' or 'multiple'"}), 400
+
+    order    = len(survey.questions)
+    question = Question(survey_id=survey_id, text=text, question_type=qtype, order=order)
+    db.session.add(question)
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Error adding question to survey %s", survey_id)
+        return jsonify({"error": "Database error adding question"}), 500
+
+    return jsonify({"message": "Question added", "id": question.id,
+                    "order": question.order}), 201
+
+
+# ── OPTIONS ───────────────────────────────────────────────────────────────────
+
+@api_bp.route("/questions/<int:question_id>/options", methods=["POST"])
+@token_required()
+def add_option(question_id):
+    question = db.session.get(Question, question_id)
+    if not question:
+        return jsonify({"error": "Question not found"}), 404
+    # IDOR prevention: only the survey creator can add options
+    parent_survey = db.session.get(Survey, question.survey_id)
+    if not parent_survey or parent_survey.created_by != g.current_user["id"]:
+        return jsonify({"error": "No autorizado"}), 403
+
+    is_multipart = request.content_type and "multipart/form-data" in request.content_type
+    if is_multipart:
+        text       = (request.form.get("text") or "").strip()
+        image_file = request.files.get("image")
+    else:
+        data       = request.get_json(silent=True) or {}
+        text       = (data.get("text") or "").strip()
+        image_file = None
+
+    if not text:
+        return jsonify({"error": "Option text is required"}), 400
+    if len(text) > 300:
         return jsonify({"error": "Option text too long (max 300 chars)"}), 400
 
-    option = SurveyOption(survey_id=survey_id, option_text=option_text)
+    image_filename = None
+    if image_file and image_file.filename:
+        try:
+            image_filename = _save_image(image_file)
+        except (ValueError, OSError) as e:
+            return jsonify({"error": str(e)}), 400
+
+    option = QuestionOption(question_id=question_id, text=text,
+                            image_filename=image_filename)
     db.session.add(option)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Error adding option to question %s", question_id)
+        return jsonify({"error": "Database error adding option"}), 500
 
-    return jsonify({"message": "Option added", "id": option.id}), 201
+    return jsonify({"message": "Option added", "id": option.id,
+                    "image_url": _img_url(image_filename)}), 201
 
 
-# -----------------------
-# VOTE
-# -----------------------
+# ── VOTES ─────────────────────────────────────────────────────────────────────
+
 @api_bp.route("/votes", methods=["POST"])
 @token_required()
 def vote():
-    data = request.get_json()
+    data        = request.get_json(silent=True) or {}
+    question_id = data.get("question_id")
+    option_id   = data.get("option_id")
+    user_id     = g.current_user["id"]
 
-    survey_id = data.get("survey_id")
-    option_id = data.get("option_id")
-    user_id = g.current_user["id"]
-
-    if not all([survey_id, option_id]):
+    if not question_id or not option_id:
         return jsonify({"error": "Missing fields"}), 400
 
-    existing_vote = Vote.query.filter_by(survey_id=survey_id, user_id=user_id).first()
-    if existing_vote:
-        return jsonify({"error": "User already voted"}), 400
+    question = db.session.get(Question, question_id)
+    if not question:
+        return jsonify({"error": "Question not found"}), 404
 
-    new_vote = Vote(survey_id=survey_id, user_id=user_id, option_id=option_id)
-    db.session.add(new_vote)
-    db.session.commit()
+    # Vote integrity: verify the option belongs to this question (prevents IDOR on votes)
+    option = db.session.get(QuestionOption, option_id)
+    if not option or option.question_id != question_id:
+        return jsonify({"error": "Opción no válida para esta pregunta"}), 400
+
+    # Single choice: sólo un voto por pregunta
+    if question.question_type == "single":
+        existing = Vote.query.filter_by(question_id=question_id, user_id=user_id).first()
+        if existing:
+            return jsonify({"error": "User already voted on this question"}), 400
+
+    # Multiple choice: no votar la misma opción dos veces
+    existing = Vote.query.filter_by(
+        question_id=question_id, option_id=option_id, user_id=user_id
+    ).first()
+    if existing:
+        return jsonify({"error": "User already voted this option"}), 400
+
+    db.session.add(Vote(question_id=question_id, option_id=option_id, user_id=user_id))
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("Error recording vote q=%s opt=%s user=%s", question_id, option_id, user_id)
+        return jsonify({"error": "Database error recording vote"}), 500
 
     return jsonify({"message": "Vote recorded"}), 201
+
+
+@api_bp.route("/surveys/<int:survey_id>/my-votes", methods=["GET"])
+@token_required()
+def my_votes(survey_id):
+    """Devuelve los votos del usuario actual en esta encuesta."""
+    survey = db.session.get(Survey, survey_id)
+    if not survey:
+        return jsonify({"error": "Survey not found"}), 404
+
+    user_id  = g.current_user["id"]
+    q_ids    = [q.id for q in survey.questions]
+    votes    = Vote.query.filter(
+        Vote.question_id.in_(q_ids),
+        Vote.user_id == user_id,
+    ).all()
+
+    return jsonify([{"question_id": v.question_id, "option_id": v.option_id}
+                    for v in votes]), 200
+
+
+@api_bp.route("/surveys/<int:survey_id>/results", methods=["GET"])
+@token_required()
+def survey_results(survey_id):
+    """Resultados con conteo de votos por opción."""
+    survey = db.session.get(Survey, survey_id)
+    if not survey:
+        return jsonify({"error": "Survey not found"}), 404
+
+    questions = []
+    for q in survey.questions:
+        total = Vote.query.filter_by(question_id=q.id).count()
+        options = []
+        for o in q.options:
+            count = Vote.query.filter_by(option_id=o.id).count()
+            options.append({
+                "id":         o.id,
+                "text":       o.text,
+                "image_url":  _img_url(o.image_filename),
+                "votes":      count,
+                "percentage": round(count / total * 100, 1) if total else 0,
+            })
+        questions.append({
+            "id":          q.id,
+            "text":        q.text,
+            "type":        q.question_type,
+            "total_votes": total,
+            "options":     options,
+        })
+
+    return jsonify({"questions": questions}), 200
