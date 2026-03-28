@@ -3,15 +3,15 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-    --bg:       #0f172a;
-    --surface:  #1e293b;
-    --surface2: #273549;
-    --border:   #334155;
-    --accent:   #6366f1;
+    --bg:       #0c0a10;
+    --surface:  #14111e;
+    --surface2: #1d1929;
+    --border:   #302b46;
+    --accent:   #c9a84c;
     --green:    #10b981;
     --red:      #ef4444;
-    --text:     #f1f5f9;
-    --muted:    #94a3b8;
+    --text:     #f5ead7;
+    --muted:    #9080a0;
     --radius:   14px;
 }
 
@@ -118,7 +118,7 @@ body {
 .btn-primary-lg {
     display: inline-flex;
     padding: 10px 24px;
-    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    background: linear-gradient(135deg, var(--accent), #a87830);
     color: #fff;
     border-radius: 9px;
     font-size: 14px;
@@ -162,7 +162,7 @@ body {
     padding: 20px;
     transition: border-color 0.15s;
 }
-.sv-question:focus-within { border-color: rgba(99,102,241,0.5); }
+.sv-question:focus-within { border-color: rgba(201,168,76,0.5); }
 
 .sv-q-meta {
     display: flex;
@@ -187,7 +187,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.3px;
 }
-.sv-q-type.single   { background: rgba(99,102,241,0.15); color: #818cf8; }
+.sv-q-type.single   { background: rgba(201,168,76,0.15); color: #c9a84c; }
 .sv-q-type.multiple { background: rgba(16,185,129,0.15); color: #34d399; }
 
 .sv-q-text {
@@ -219,7 +219,7 @@ body {
     font-weight: 500;
     user-select: none;
 }
-.sv-option:hover:not([disabled]):not(.voted) { border-color: var(--accent); background: rgba(99,102,241,0.05); }
+.sv-option:hover:not([disabled]):not(.voted) { border-color: var(--accent); background: rgba(201,168,76,0.05); }
 .sv-option.voted { border-color: var(--green); background: rgba(16,185,129,0.07); }
 .sv-option.has-image { align-items: flex-start; padding: 12px 14px; }
 

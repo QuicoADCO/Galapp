@@ -2,15 +2,15 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-    --bg:        #0f1117;
-    --surface:   #1a1d2e;
-    --surface2:  #22263a;
-    --border:    #2e3250;
-    --border-focus: #6c63ff;
-    --text:      #e8eaf6;
-    --muted:     #7b82a8;
-    --accent:    #6c63ff;
-    --accent2:   #a78bfa;
+    --bg:        #0c0a10;
+    --surface:   #14111e;
+    --surface2:  #1d1929;
+    --border:    #302b46;
+    --border-focus: #c9a84c;
+    --text:      #f5ead7;
+    --muted:     #9080a0;
+    --accent:    #c9a84c;
+    --accent2:   #a87830;
     --success:   #22c55e;
     --error:     #ef4444;
     --radius:    12px;
@@ -135,7 +135,7 @@ body {
 .drop-zone:hover,
 .drop-zone.drag-over {
     border-color: var(--accent);
-    background: rgba(108,99,255,.05);
+    background: rgba(201,168,76,.05);
 }
 .drop-zone.has-image {
     border-style: solid;
@@ -242,7 +242,7 @@ body {
 .form-group input:focus,
 .form-group textarea:focus {
     border-color: var(--border-focus);
-    box-shadow: 0 0 0 3px rgba(108,99,255,.15);
+    box-shadow: 0 0 0 3px rgba(201,168,76,.15);
 }
 .form-group input::placeholder,
 .form-group textarea::placeholder { color: var(--muted); opacity: 0.6; }
@@ -275,7 +275,7 @@ body {
     transition: border-color var(--transition);
 }
 .question-block:focus-within {
-    border-color: rgba(108,99,255,.4);
+    border-color: rgba(201,168,76,.4);
 }
 
 .question-header {
@@ -371,7 +371,7 @@ body {
 }
 .q-text:focus {
     border-color: var(--border-focus);
-    box-shadow: 0 0 0 3px rgba(108,99,255,.12);
+    box-shadow: 0 0 0 3px rgba(201,168,76,.12);
 }
 .q-text::placeholder { color: var(--muted); opacity: 0.6; }
 
@@ -427,7 +427,7 @@ body {
 }
 .opt-text:focus {
     border-color: var(--border-focus);
-    box-shadow: 0 0 0 2px rgba(108,99,255,.12);
+    box-shadow: 0 0 0 2px rgba(201,168,76,.12);
 }
 .opt-text::placeholder { color: var(--muted); opacity: 0.6; }
 
@@ -456,7 +456,7 @@ body {
 .opt-img-trigger:hover {
     border-color: var(--accent);
     color: var(--accent2);
-    background: rgba(108,99,255,.07);
+    background: rgba(201,168,76,.07);
 }
 
 .opt-thumb-wrap {
@@ -534,7 +534,7 @@ body {
 .btn-add-opt-q:hover {
     border-color: var(--accent);
     color: var(--accent2);
-    background: rgba(108,99,255,.05);
+    background: rgba(201,168,76,.05);
 }
 
 /* ── ADD QUESTION BUTTON ────────────────────────── */
@@ -558,7 +558,7 @@ body {
 .btn-add-question:hover {
     border-color: var(--accent);
     color: var(--accent2);
-    background: rgba(108,99,255,.05);
+    background: rgba(201,168,76,.05);
 }
 
 /* ── FORM ACTIONS ───────────────────────────────── */

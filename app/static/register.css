@@ -8,8 +8,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(ellipse at 40% 80%, #064e3b 0%, #0f172a 60%);
-    color: #f1f5f9;
+    background: radial-gradient(ellipse at 40% 80%, #5c1c1c 0%, #0c0a10 65%);
+    color: #f5ead7;
     padding: 24px;
 }
 
@@ -24,12 +24,12 @@ body {
 }
 
 .logo h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
-.logo h1 span { color: #10b981; }
-.logo p { color: #94a3b8; font-size: 13px; margin-top: 6px; }
+.logo h1 span { color: #c9a84c; }
+.logo p { color: #9080a0; font-size: 13px; margin-top: 6px; }
 
 .card {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: #14111e;
+    border: 1px solid #302b46;
     border-radius: 20px;
     padding: 36px;
     box-shadow: 0 25px 50px rgba(0,0,0,0.4);
@@ -43,17 +43,17 @@ body {
     display: block;
     font-size: 13px;
     font-weight: 500;
-    color: #94a3b8;
+    color: #9080a0;
     margin-bottom: 8px;
 }
 
 .form-group input {
     width: 100%;
     padding: 12px 16px;
-    background: #0f172a;
-    border: 1.5px solid #334155;
+    background: #0c0a10;
+    border: 1.5px solid #302b46;
     border-radius: 10px;
-    color: #f1f5f9;
+    color: #f5ead7;
     font-size: 14px;
     font-family: inherit;
     outline: none;
@@ -61,16 +61,16 @@ body {
 }
 
 .form-group input:focus {
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
+    border-color: #c9a84c;
+    box-shadow: 0 0 0 3px rgba(201,168,76,0.15);
 }
 
-.form-group input::placeholder { color: #475569; }
+.form-group input::placeholder { color: #5a4d6a; }
 
 .btn-register {
     width: 100%;
     padding: 13px;
-    background: linear-gradient(135deg, #10b981, #059669);
+    background: linear-gradient(135deg, #c9a84c, #a87830);
     border: none;
     border-radius: 10px;
     color: #fff;
@@ -109,8 +109,8 @@ body {
     text-align: center;
     margin-top: 20px;
     font-size: 13px;
-    color: #64748b;
+    color: #9080a0;
 }
 
-.footer-link a { color: #10b981; text-decoration: none; font-weight: 500; }
+.footer-link a { color: #c9a84c; text-decoration: none; font-weight: 500; }
 .footer-link a:hover { text-decoration: underline; }
