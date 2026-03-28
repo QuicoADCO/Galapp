@@ -24,11 +24,11 @@ def seed_admin(username="admin", email="admin@galapp.com", password="Admin1234!"
     )
     db.session.add(admin)
     db.session.commit()
-    print(f"Usuario admin creado:")
+    print("Usuario admin creado:")
     print(f"  Username : {username}")
     print(f"  Email    : {email}")
     print(f"  Password : {password}")
-    print(f"  Role     : admin")
+    print("  Role     : admin")
 
 
 if __name__ == "__main__":

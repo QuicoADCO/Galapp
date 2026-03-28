@@ -21,6 +21,7 @@ _MAGIC = {
     b"RIFF":                   "webp",  # WEBP (bytes 0-3; bytes 8-11 are "WEBP")
 }
 
+
 def _check_magic(file) -> bool:
     """Return True if the first bytes match a known image signature."""
     header = file.read(12)
@@ -32,6 +33,7 @@ def _check_magic(file) -> bool:
                 return header[8:12] == b"WEBP"
             return True
     return False
+
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
