@@ -9,20 +9,21 @@ GalApp es una aplicación web de votaciones en vivo desarrollada en Python con F
 1. [Arquitectura del proyecto](#arquitectura-del-proyecto)
 2. [Tecnologías](#tecnologías)
 3. [Entorno virtual y aislamiento Docker](#entorno-virtual-y-aislamiento-docker)
-4. [Puesta en marcha](#puesta-en-marcha)
+4. [Puesta en marcha y despliegue en red](#puesta-en-marcha-y-despliegue-en-red)
 5. [Tipos de usuario y diferenciación visual](#tipos-de-usuario-y-diferenciación-visual)
-6. [API REST](#api-rest)
-7. [Autenticación JWT](#autenticación-jwt)
-8. [Seguridad – OWASP Top 10 Web 2025](#seguridad--owasp-top-10-web-2025)
-9. [Seguridad – OWASP API Security Top 10](#seguridad--owasp-api-security-top-10)
-10. [Cabeceras de seguridad HTTP](#cabeceras-de-seguridad-http)
-11. [CCN-CERT – Estándares aplicados](#ccn-cert--estándares-aplicados)
-12. [Base de datos](#base-de-datos)
-13. [Contenedorización Docker](#contenedorización-docker)
-14. [Testing](#testing)
-15. [CI/CD – GitHub Actions](#cicd--github-actions)
-16. [GitFlow](#gitflow)
-17. [Pruebas con Postman](#pruebas-con-postman)
+6. [Votación anónima desde enlace compartido](#votación-anónima-desde-enlace-compartido)
+7. [API REST](#api-rest)
+8. [Autenticación JWT](#autenticación-jwt)
+9. [Seguridad – OWASP Top 10 Web 2025](#seguridad--owasp-top-10-web-2025)
+10. [Seguridad – OWASP API Security Top 10](#seguridad--owasp-api-security-top-10)
+11. [Cabeceras de seguridad HTTP](#cabeceras-de-seguridad-http)
+12. [CCN-CERT – Estándares aplicados](#ccn-cert--estándares-aplicados)
+13. [Base de datos](#base-de-datos)
+14. [Contenedorización Docker](#contenedorización-docker)
+15. [Testing](#testing)
+16. [CI/CD – GitHub Actions](#cicd--github-actions)
+17. [GitFlow](#gitflow)
+18. [Pruebas con Postman](#pruebas-con-postman)
 
 ---
 
@@ -33,7 +34,7 @@ Galapp/
 ├── app/
 │   ├── models/
 │   │   ├── user.py               # Modelo User: id, username, email, password (hash), role
-│   │   └── survey.py             # Survey, Question, QuestionOption, Vote + UniqueConstraint
+│   │   └── survey.py             # Survey, Question, QuestionOption, Vote, AnonVote
 │   ├── routes/
 │   │   ├── api.py                # API REST: encuestas, preguntas, opciones, votos (IDOR protegido)
 │   │   ├── auth.py               # Registro y login — validación + JWT + rollback DB
@@ -49,7 +50,7 @@ Galapp/
 │   │   ├── register.js           # Registro con validación cliente
 │   │   ├── dashboard.js          # Dashboard: carga surveys, votación, tema admin
 │   │   ├── create_survey.js      # Constructor dinámico de encuestas (WeakMap para imágenes)
-│   │   ├── survey_vote.js        # Página de votación pública
+│   │   ├── survey_vote.js        # Votación pública: anónima o con JWT, voter_token UUID
 │   │   ├── login.css             # Estilos del formulario de login
 │   │   ├── register.css          # Estilos del formulario de registro
 │   │   ├── dashboard.css         # Estilos completos del dashboard + admin-theme
@@ -168,7 +169,7 @@ docker compose ps
 
 ---
 
-## Puesta en marcha
+## Puesta en marcha y despliegue en red
 
 ### Requisitos
 
@@ -190,14 +191,61 @@ JWT_SECRET_KEY=another-super-long-random-key-987654
 ### Levantar la aplicación por primera vez
 
 ```bash
-# Construir imágenes y levantar todos los servicios
+# 1. Construir imágenes y levantar todos los servicios
 docker compose up -d --build
 
-# Crear el usuario administrador
+# 2. Crear el usuario administrador inicial
 docker compose exec web python -m app.seed
+
+# 3. Verificar que todos los servicios están healthy
+docker compose ps
 ```
 
 La aplicación queda disponible en: **http://localhost**
+
+### Acceso desde otros dispositivos de la misma red (LAN/WiFi)
+
+Nginx escucha en `0.0.0.0:80`, lo que significa que cualquier dispositivo conectado a la **misma red WiFi o LAN** puede acceder a la aplicación mientras el servidor esté encendido.
+
+**Paso 1 — Encontrar la IP local del servidor:**
+
+```bash
+# Windows (PowerShell o CMD)
+ipconfig
+# Busca "Dirección IPv4" bajo tu adaptador WiFi o Ethernet
+# Ejemplo: 192.168.1.46
+
+# Linux / Mac
+ip a | grep "inet "
+# o
+ifconfig | grep "inet "
+```
+
+**Paso 2 — Acceder desde cualquier dispositivo de la red:**
+
+```
+http://192.168.1.46          → Página principal
+http://192.168.1.46/login    → Login
+http://192.168.1.46/register → Registro
+http://192.168.1.46/dashboard → Panel de control
+http://192.168.1.46/encuesta/1 → Encuesta compartida (voto anónimo)
+```
+
+> Sustituye `192.168.1.46` por la IP que muestre `ipconfig` en tu máquina. Puede cambiar si tu router asigna IPs dinámicas — considera asignar una IP estática en la configuración de tu router para estabilidad.
+
+**Paso 3 — Compartir una encuesta concreta:**
+
+Desde el dashboard, haz clic en **🔗 Compartir** en cualquier tarjeta. El enlace copiado usará `window.location.origin`, que será la IP o el hostname desde el que estés accediendo. Envía ese enlace (WhatsApp, email, etc.) a quien quieras que vote.
+
+### Requisitos para acceso externo (fuera de tu red)
+
+Para que usuarios fuera de tu WiFi puedan acceder necesitarías:
+
+| Opción | Descripción |
+|--------|-------------|
+| **Ngrok** (rápido) | `ngrok http 80` → genera URL pública temporal |
+| **Port forwarding** | Abrir puerto 80 en tu router y usar tu IP pública |
+| **VPS / Cloud** | Desplegar en un servidor con IP pública fija (recomendado para producción) |
 
 ### Reiniciar desde cero (borra todos los datos)
 
@@ -219,8 +267,11 @@ docker compose logs -f nginx
 # Parar sin borrar datos
 docker compose down
 
-# Parar y borrar volumen de base de datos
+# Parar y borrar todos los volúmenes (PostgreSQL + uploads)
 docker compose down -v
+
+# Ver estado de los contenedores
+docker compose ps
 ```
 
 ---
@@ -278,6 +329,100 @@ Los cambios visuales están definidos en [`app/static/dashboard.css`](app/static
 
 ---
 
+## Votación anónima desde enlace compartido
+
+Cualquier persona que reciba el enlace de una encuesta puede votar **sin necesidad de registrarse**, siempre que el servidor esté en línea y accesible desde su red.
+
+### Cómo funciona
+
+```
+1. El creador comparte el enlace de su encuesta:
+   http://192.168.1.46/encuesta/3
+
+2. El visitante abre el enlace en su navegador.
+   → Si tiene sesión JWT: vota como usuario registrado.
+   → Si no tiene sesión: vota de forma anónima.
+
+3. Para votar anónimamente, el navegador genera un UUID v4
+   la primera vez y lo guarda en localStorage como "voter_token".
+
+4. El UUID se envía en la cabecera HTTP X-Voter-Token en cada voto.
+
+5. El servidor valida el formato del token y lo usa para
+   deduplicar: una persona solo puede votar una vez por pregunta.
+```
+
+### Identificación del votante anónimo
+
+| Mecanismo | Detalle |
+|-----------|---------|
+| **Generación del token** | UUID v4 generado en el navegador: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx` |
+| **Almacenamiento** | `localStorage.setItem('voter_token', t)` — persiste entre recargas |
+| **Transmisión** | Cabecera HTTP personalizada `X-Voter-Token` (no cookie, no URL) |
+| **Reenvío por nginx** | `proxy_set_header X-Voter-Token $http_x_voter_token;` en `nginx.conf` |
+| **Validación en servidor** | Regex `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` |
+| **Persistencia** | Tabla separada `anon_votes` — sin FK a `users` |
+
+### Seguridad implementada
+
+| Amenaza | Contramedida |
+|---------|-------------|
+| **Flood de votos / vote stuffing** | Rate limit de **30 req/min** en `/api/public/*/vote` (`Flask-Limiter`) |
+| **Doble voto anónimo** | `UniqueConstraint("voter_token", "question_id")` en la tabla `anon_votes` — la BD rechaza el segundo intento aunque se eluda el rate limit |
+| **Inyección de token malformado** | El servidor valida el formato UUID con regex antes de usar el token; `_voter_token()` devuelve `None` si no coincide → `400 Bad Request` |
+| **Suplantación de otro votante** | El servidor no confía en el token del cliente para otorgar privilegios, solo para deduplicar. Cualquier UUID falso solo impide votar dos veces al atacante |
+| **Vote tampering (opción ajena)** | El servidor verifica que `option.question_id == question_id` y que la pregunta pertenece a la encuesta (`question.survey_id == survey_id`) |
+| **Acceso a encuestas privadas** | Los endpoints públicos solo exponen datos de encuestas (sin datos de usuario); la propiedad de la encuesta no se revela |
+| **Exposición de votos de otros** | `GET /api/public/surveys/<id>/my-votes` filtra estrictamente por el `voter_token` de la petición |
+
+### Endpoints públicos añadidos
+
+```
+GET  /api/public/surveys/<id>              → Datos de la encuesta (sin JWT)
+GET  /api/public/surveys/<id>/my-votes     → Votos previos del voter_token actual
+POST /api/public/surveys/<id>/vote         → Registrar voto anónimo (máx. 30/min)
+```
+
+### Flujo técnico detallado
+
+```
+Navegador (sin JWT)
+    │
+    │  GET /encuesta/3  → HTML de survey_vote.html
+    │
+    ▼
+survey_vote.js detecta: jwtToken === null
+    │
+    │  Genera voter_token UUID v4 (si no existe en localStorage)
+    │  BASE = '/api/public'
+    │
+    ▼
+GET /api/public/surveys/3           (cabecera X-Voter-Token: uuid)
+GET /api/public/surveys/3/my-votes  (para marcar preguntas ya votadas)
+    │
+    ▼
+Usuario hace clic en "Votar esta pregunta"
+    │
+    ▼
+POST /api/public/surveys/3/vote
+    Body: { question_id: 2, option_id: 7 }
+    Header: X-Voter-Token: a1b2c3d4-...
+    │
+    ▼  Nginx reenvía X-Voter-Token → Flask
+    │
+    ▼  Flask valida:
+    │  1. UUID bien formado
+    │  2. question_id pertenece a survey_id
+    │  3. option_id pertenece a question_id
+    │  4. ¿Ya existe AnonVote(voter_token, question_id)?  → 400 si sí
+    │
+    ▼
+INSERT INTO anon_votes (voter_token, question_id, option_id)
+    Si UniqueConstraint viola → IntegrityError → rollback → 400
+```
+
+---
+
 ## API REST
 
 Todos los endpoints salvo `/api/health` requieren autenticación JWT en la cabecera:
@@ -288,19 +433,22 @@ Authorization: Bearer <token>
 
 ### Tabla de endpoints
 
-| Método | Endpoint                              | Auth | Solo creador | Descripción                                      |
-|--------|---------------------------------------|------|:------------:|--------------------------------------------------|
-| GET    | `/api/health`                         | No   | —            | Estado del servicio                              |
-| POST   | `/auth/register`                      | No   | —            | Registro — máx. 5 req/min por IP                 |
-| POST   | `/auth/login`                         | No   | —            | Login — devuelve JWT, máx. 10 req/min            |
-| GET    | `/api/surveys`                        | Sí   | —            | Listar todas las encuestas                       |
-| POST   | `/api/surveys`                        | Sí   | —            | Crear encuesta — máx. 20 req/min                 |
-| GET    | `/api/surveys/<id>`                   | Sí   | —            | Encuesta con preguntas y opciones                |
-| POST   | `/api/surveys/<id>/questions`         | Sí   | ✓            | Añadir pregunta (solo el creador de la encuesta) |
-| POST   | `/api/questions/<id>/options`         | Sí   | ✓            | Añadir opción (solo el creador de la encuesta)   |
-| POST   | `/api/votes`                          | Sí   | —            | Votar — máx. 60 req/min, opción verificada       |
-| GET    | `/api/surveys/<id>/my-votes`          | Sí   | —            | Votos del usuario autenticado en esta encuesta   |
-| GET    | `/api/surveys/<id>/results`           | Sí   | —            | Resultados con porcentajes por opción            |
+| Método | Endpoint                                     | Auth        | Solo creador | Descripción                                      |
+|--------|----------------------------------------------|-------------|:------------:|--------------------------------------------------|
+| GET    | `/api/health`                                | No          | —            | Estado del servicio                              |
+| POST   | `/auth/register`                             | No          | —            | Registro — máx. 5 req/min por IP                 |
+| POST   | `/auth/login`                                | No          | —            | Login — devuelve JWT, máx. 10 req/min            |
+| GET    | `/api/surveys`                               | JWT         | —            | Listar todas las encuestas                       |
+| POST   | `/api/surveys`                               | JWT         | —            | Crear encuesta — máx. 20 req/min                 |
+| GET    | `/api/surveys/<id>`                          | JWT         | —            | Encuesta con preguntas y opciones                |
+| POST   | `/api/surveys/<id>/questions`                | JWT         | ✓            | Añadir pregunta (solo el creador de la encuesta) |
+| POST   | `/api/questions/<id>/options`                | JWT         | ✓            | Añadir opción (solo el creador de la encuesta)   |
+| POST   | `/api/votes`                                 | JWT         | —            | Votar — máx. 60 req/min, opción verificada       |
+| GET    | `/api/surveys/<id>/my-votes`                 | JWT         | —            | Votos del usuario autenticado en esta encuesta   |
+| GET    | `/api/surveys/<id>/results`                  | JWT         | —            | Resultados con porcentajes por opción            |
+| GET    | `/api/public/surveys/<id>`                   | No (anónimo)| —            | Datos de encuesta sin JWT (votación compartida)  |
+| GET    | `/api/public/surveys/<id>/my-votes`          | No (anónimo)| —            | Votos previos del voter_token actual             |
+| POST   | `/api/public/surveys/<id>/vote`              | No (anónimo)| —            | Voto anónimo — máx. 30 req/min, UUID requerido   |
 
 ### Validaciones de entrada
 
@@ -610,13 +758,16 @@ La API de GalApp implementa medidas específicas contra las vulnerabilidades del
 
 ### API6:2023 – Unrestricted Access to Sensitive Business Flows
 
-**Riesgo:** Automatización masiva de votos o registros.
+**Riesgo:** Automatización masiva de votos o registros, incluyendo votantes anónimos sin autenticación.
 
 | Medida | Dónde |
 |--------|-------|
-| Rate limit 60 req/min en `/api/votes` | [`app/main.py`](app/main.py) |
+| Rate limit 60 req/min en `/api/votes` (usuarios autenticados) | [`app/main.py`](app/main.py) |
+| Rate limit **30 req/min** en `/api/public/*/vote` (votantes anónimos — más restrictivo) | [`app/main.py`](app/main.py) |
 | Rate limit 5 req/min en `/auth/register` | [`app/main.py`](app/main.py) |
-| `UniqueConstraint` a nivel BD impide doble voto aunque se eluda el rate limit | [`app/models/survey.py`](app/models/survey.py) |
+| `UniqueConstraint("question_id", "user_id")` impide doble voto de usuario registrado | [`app/models/survey.py`](app/models/survey.py) |
+| `UniqueConstraint("voter_token", "question_id")` impide doble voto anónimo aunque se eluda el rate limit | [`app/models/survey.py`](app/models/survey.py) |
+| Validación de formato UUID del `voter_token` — tokens malformados → 400 inmediato | [`app/routes/api.py`](app/routes/api.py) — `_voter_token()` |
 
 ### API8:2023 – Security Misconfiguration
 
@@ -768,6 +919,40 @@ Las tablas se crean automáticamente en el primer arranque con `db.create_all()`
 | option_id   | Integer  | FK → question_options.id                               |
 | created_at  | DateTime | UTC, automático                                        |
 | —           | —        | `UNIQUE(question_id, user_id)` — un voto por usuario por pregunta |
+
+### Modelo `anon_votes` — [`app/models/survey.py`](app/models/survey.py)
+
+Tabla separada para votos anónimos (sin FK a `users`). Convive con `votes` sin alterar su esquema.
+
+| Campo        | Tipo        | Restricciones                                               |
+|--------------|-------------|-------------------------------------------------------------|
+| id           | Integer     | PK                                                          |
+| voter_token  | String(36)  | NOT NULL, indexado — UUID v4 del navegador                  |
+| question_id  | Integer     | FK → questions.id                                           |
+| option_id    | Integer     | FK → question_options.id                                    |
+| created_at   | DateTime    | UTC, automático                                             |
+| —            | —           | `UNIQUE(voter_token, question_id)` — un voto anónimo por pregunta |
+
+> El servidor **nunca almacena** el `voter_token` vinculado a ninguna identidad real. Se usa exclusivamente para deduplicación y puede rotar si el usuario borra su `localStorage`.
+
+### Relación entre tablas
+
+```
+users ──────────────────────── votes
+  (id)                       (user_id FK)
+                              (question_id FK) ──┐
+                              (option_id FK)  ──┐│
+                                               ││
+surveys ── questions ─────────────────────────┘│
+             (id)  └── question_options ────────┘
+                             (id)
+
+anon_votes (sin FK a users)
+  voter_token  (UUID de localStorage)
+  question_id  FK → questions.id
+  option_id    FK → question_options.id
+  UNIQUE(voter_token, question_id)
+```
 
 ---
 
