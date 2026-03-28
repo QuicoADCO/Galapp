@@ -293,4 +293,10 @@ function esc(s) {
         .replace(/'/g,'&#x27;');
 }
 
+// ── RESULTADOS: cerrar con botón y con clic en el fondo ──
+document.getElementById('results-close-btn').addEventListener('click', closeResults);
+document.getElementById('results-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeResults();
+});
+
 loadSurveys();

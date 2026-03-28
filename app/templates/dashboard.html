@@ -86,7 +86,7 @@
 </div>
 
 <!-- ── MODAL RESULTADOS ── -->
-<div class="modal-overlay" id="results-overlay" role="dialog" aria-modal="true" aria-labelledby="results-title" onclick="if(event.target===this)closeResults()">
+<div class="modal-overlay" id="results-overlay" role="dialog" aria-modal="true" aria-labelledby="results-title">
     <div class="modal results-modal">
         <div class="modal-header">
             <div>
@@ -95,7 +95,7 @@
                     <span class="live-dot"></span> Actualización automática cada 5s
                 </span>
             </div>
-            <button class="btn-close" onclick="closeResults()" aria-label="Cerrar">&times;</button>
+            <button class="btn-close" id="results-close-btn" aria-label="Cerrar">&times;</button>
         </div>
         <div id="results-body" class="results-body">
             <p class="r-empty">Cargando resultados...</p>
