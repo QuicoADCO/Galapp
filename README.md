@@ -12,18 +12,19 @@ GalApp es una aplicación web de votaciones en vivo desarrollada en Python con F
 4. [Puesta en marcha y despliegue en red](#puesta-en-marcha-y-despliegue-en-red)
 5. [Tipos de usuario y diferenciación visual](#tipos-de-usuario-y-diferenciación-visual)
 6. [Votación anónima desde enlace compartido](#votación-anónima-desde-enlace-compartido)
-7. [API REST](#api-rest)
-8. [Autenticación JWT](#autenticación-jwt)
-9. [Seguridad – OWASP Top 10 Web 2025](#seguridad--owasp-top-10-web-2025)
-10. [Seguridad – OWASP API Security Top 10](#seguridad--owasp-api-security-top-10)
-11. [Cabeceras de seguridad HTTP](#cabeceras-de-seguridad-http)
-12. [CCN-CERT – Estándares aplicados](#ccn-cert--estándares-aplicados)
-13. [Base de datos](#base-de-datos)
-14. [Contenedorización Docker](#contenedorización-docker)
-15. [Testing](#testing)
-16. [CI/CD – GitHub Actions](#cicd--github-actions)
-17. [GitFlow](#gitflow)
-18. [Pruebas con Postman](#pruebas-con-postman)
+7. [Dashboard por usuario – aislamiento de encuestas](#dashboard-por-usuario--aislamiento-de-encuestas)
+8. [API REST](#api-rest)
+9. [Autenticación JWT](#autenticación-jwt)
+10. [Seguridad – OWASP Top 10 Web 2025](#seguridad--owasp-top-10-web-2025)
+11. [Seguridad – OWASP API Security Top 10](#seguridad--owasp-api-security-top-10)
+12. [Cabeceras de seguridad HTTP](#cabeceras-de-seguridad-http)
+13. [CCN-CERT – Estándares aplicados](#ccn-cert--estándares-aplicados)
+14. [Base de datos](#base-de-datos)
+15. [Contenedorización Docker](#contenedorización-docker)
+16. [Testing](#testing)
+17. [CI/CD – GitHub Actions](#cicd--github-actions)
+18. [GitFlow](#gitflow)
+19. [Pruebas con Postman](#pruebas-con-postman)
 
 ---
 
@@ -423,6 +424,51 @@ INSERT INTO anon_votes (voter_token, question_id, option_id)
 
 ---
 
+## Dashboard por usuario – aislamiento de encuestas
+
+El dashboard de cada usuario muestra **únicamente sus propias encuestas y aquellas en las que ha participado**. No existe ninguna vista global de todas las encuestas del sistema.
+
+### Dos secciones independientes
+
+| Sección | Qué muestra | Endpoint |
+|---------|-------------|----------|
+| **Mis encuestas** | Encuestas creadas por el usuario autenticado | `GET /api/surveys` |
+| **Encuestas en las que he participado** | Encuestas de otros usuarios en las que el usuario ha votado | `GET /api/surveys/participated` |
+
+### Seguridad implementada
+
+| Amenaza | Contramedida |
+|---------|-------------|
+| **Enumeración de encuestas ajenas** | `GET /api/surveys` filtra por `created_by == token.id` — un usuario nunca recibe encuestas de otros aunque manipule la petición |
+| **Acceso al historial de otro usuario** | `GET /api/surveys/participated` usa el `user_id` del JWT para el JOIN con `votes` — no hay parámetro de usuario en la URL que se pueda manipular |
+| **Fuerza bruta / scraping del listado** | Rate limit 60 req/min en `GET /api/surveys` y 30 req/min en `GET /api/surveys/participated` |
+| **Exposición del ID de creadores** | El campo `created_by` se omite en la respuesta de `participated_surveys` — el participante no conoce el ID interno del creador de encuestas ajenas |
+| **User ID en request body** | El `user_id` nunca se lee del body ni de query params — siempre proviene del JWT verificado por `@token_required()` |
+
+### Implementación
+
+```python
+# Solo las del usuario
+surveys = Survey.query.filter_by(created_by=g.current_user["id"]).all()
+
+# Solo las ajenas donde ha votado
+voted_ids = (
+    db.session.query(Question.survey_id)
+    .join(Vote, Vote.question_id == Question.id)
+    .filter(Vote.user_id == g.current_user["id"])   # siempre del JWT
+    .distinct()
+    .subquery()
+)
+surveys = Survey.query.filter(
+    Survey.id.in_(voted_ids),
+    Survey.created_by != g.current_user["id"],       # excluye las propias
+).all()
+```
+
+Todas las consultas usan **SQLAlchemy ORM con parámetros enlazados** — sin SQL manual, sin riesgo de inyección.
+
+---
+
 ## API REST
 
 Todos los endpoints salvo `/api/health` requieren autenticación JWT en la cabecera:
@@ -438,8 +484,9 @@ Authorization: Bearer <token>
 | GET    | `/api/health`                                | No          | —            | Estado del servicio                              |
 | POST   | `/auth/register`                             | No          | —            | Registro — máx. 5 req/min por IP                 |
 | POST   | `/auth/login`                                | No          | —            | Login — devuelve JWT, máx. 10 req/min            |
-| GET    | `/api/surveys`                               | JWT         | —            | Listar todas las encuestas                       |
+| GET    | `/api/surveys`                               | JWT         | —            | Solo las encuestas creadas por el usuario — máx. 60 req/min |
 | POST   | `/api/surveys`                               | JWT         | —            | Crear encuesta — máx. 20 req/min                 |
+| GET    | `/api/surveys/participated`                  | JWT         | —            | Encuestas ajenas en las que el usuario ha votado — máx. 30 req/min |
 | GET    | `/api/surveys/<id>`                          | JWT         | —            | Encuesta con preguntas y opciones                |
 | POST   | `/api/surveys/<id>/questions`                | JWT         | ✓            | Añadir pregunta (solo el creador de la encuesta) |
 | POST   | `/api/questions/<id>/options`                | JWT         | ✓            | Añadir opción (solo el creador de la encuesta)   |
@@ -584,6 +631,9 @@ curl -X POST http://localhost/api/votes \
 | **IDOR en opciones:** solo el creador puede añadir opciones | Verificación de propiedad a través de `question → survey` | [`app/routes/api.py`](app/routes/api.py) |
 | **Vote tampering:** la opción debe pertenecer a la pregunta | `if option.question_id != question_id: return 400` | [`app/routes/api.py`](app/routes/api.py) |
 | **Open Redirect en login:** `?siguiente=` solo acepta rutas relativas | `siguiente.startsWith('/') && !siguiente.startsWith('//')` | [`app/static/login.js`](app/static/login.js) |
+| **Aislamiento de listado:** `GET /api/surveys` filtra por `created_by == token.id` | Un usuario nunca ve encuestas ajenas en su dashboard | [`app/routes/api.py`](app/routes/api.py) — `get_surveys()` |
+| **IDOR en encuestas participadas:** `GET /api/surveys/participated` usa el `user_id` del JWT para el JOIN | No se puede solicitar el historial de participación de otro usuario | [`app/routes/api.py`](app/routes/api.py) — `participated_surveys()` |
+| **Mínima exposición de datos en listado participado:** `created_by` omitido | El ID interno del creador de una encuesta ajena no se devuelve al participante | [`app/routes/api.py`](app/routes/api.py) — `participated_surveys()` |
 
 > **IDOR (Insecure Direct Object Reference):** sin los controles de propiedad, cualquier usuario autenticado podía añadir preguntas y opciones a encuestas ajenas mediante `POST /api/surveys/<id>/questions`. Ahora el servidor verifica `survey.created_by == token.id`. Cubierto en norma CCN-CERT IC-03 (Gestión de acceso a objetos).
 
@@ -714,6 +764,8 @@ La API de GalApp implementa medidas específicas contra las vulnerabilidades del
 | Solo el creador de una encuesta puede añadirle preguntas (`created_by == token.id`) | [`app/routes/api.py`](app/routes/api.py) — `add_question()` |
 | Solo el creador puede añadir opciones a sus preguntas (verificación a través de FK) | [`app/routes/api.py`](app/routes/api.py) — `add_option()` |
 | Los resultados y votos solo se devuelven al usuario autenticado que los solicita | [`app/routes/api.py`](app/routes/api.py) — `my_votes()`, `results()` |
+| **`GET /api/surveys` devuelve únicamente las encuestas del usuario autenticado** — no permite enumerar encuestas de otros usuarios | [`app/routes/api.py`](app/routes/api.py) — `get_surveys()` |
+| **`GET /api/surveys/participated` filtra por `user_id` del JWT** — no es posible consultar el historial de participación de otro usuario cambiando la URL | [`app/routes/api.py`](app/routes/api.py) — `participated_surveys()` |
 
 ### API2:2023 – Broken Authentication
 
@@ -742,6 +794,8 @@ La API de GalApp implementa medidas específicas contra las vulnerabilidades del
 | Medida | Dónde |
 |--------|-------|
 | Rate limits por IP en todos los endpoints sensibles | [`app/main.py`](app/main.py) |
+| `GET /api/surveys` — máx. 60 req/min (evita enumeración masiva) | [`app/main.py`](app/main.py) |
+| `GET /api/surveys/participated` — máx. 30 req/min (JOIN subquery, más costoso) | [`app/main.py`](app/main.py) |
 | `MAX_CONTENT_LENGTH = 5 MB` en Flask | [`app/main.py`](app/main.py) |
 | `client_max_body_size 5M` en nginx | [`nginx/nginx.conf`](nginx/nginx.conf) |
 | Límite de longitud en todos los campos de texto | [`app/routes/api.py`](app/routes/api.py) |

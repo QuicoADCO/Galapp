@@ -145,6 +145,8 @@ def participated_surveys():
         Survey.id.in_(voted_ids),
         Survey.created_by != user_id,
     ).all()
+    # created_by se omite intencionalmente: el usuario no necesita saber
+    # el ID interno del creador de encuestas ajenas.
     return jsonify([
         {
             "id":             s.id,
@@ -152,7 +154,6 @@ def participated_surveys():
             "description":    s.description,
             "image_url":      _img_url(s.image_filename),
             "question_count": len(s.questions),
-            "created_by":     s.created_by,
             "created_at":     s.created_at.isoformat() if s.created_at else None,
         }
         for s in surveys

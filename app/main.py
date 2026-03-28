@@ -75,6 +75,9 @@ def create_app(test_config=None):
     limiter.limit("60 per minute")(app.view_functions["api.vote"])
     # Votos anónimos — más restrictivo para evitar flood sin autenticación
     limiter.limit("30 per minute")(app.view_functions["api.public_vote"])
+    # Listados — la consulta participated hace un JOIN; se limita para evitar abuso
+    limiter.limit("60 per minute")(app.view_functions["api.get_surveys"])
+    limiter.limit("30 per minute")(app.view_functions["api.participated_surveys"])
 
     @app.errorhandler(400)
     def bad_request(e):
