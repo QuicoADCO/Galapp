@@ -754,6 +754,57 @@ body {
 .content::-webkit-scrollbar-track { background: transparent; }
 .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
 
+/* ─── ADMIN THEME ─── */
+body.admin-theme { --accent: #f59e0b; }
+
+body.admin-theme .sidebar-logo span { color: var(--accent); }
+body.admin-theme .nav-btn.active {
+    background: rgba(245,158,11,0.15);
+    color: var(--accent);
+}
+body.admin-theme .role-badge {
+    background: rgba(245,158,11,0.2);
+    color: var(--accent);
+}
+body.admin-theme .topbar {
+    border-bottom: 2px solid rgba(245,158,11,0.4);
+}
+body.admin-theme .sidebar {
+    border-right: 1px solid rgba(245,158,11,0.25);
+}
+body.admin-theme .btn-primary {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    box-shadow: 0 4px 12px rgba(245,158,11,0.35);
+}
+body.admin-theme .btn-primary:hover {
+    box-shadow: 0 6px 16px rgba(245,158,11,0.5);
+}
+body.admin-theme .avatar {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+body.admin-theme .stat-card.c1::before {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+body.admin-theme .vote-option:hover {
+    border-color: var(--accent);
+    background: rgba(245,158,11,0.05);
+}
+body.admin-theme .survey-card:hover { border-color: var(--accent); }
+body.admin-theme .form-group input:focus,
+body.admin-theme .form-group textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.15);
+}
+body.admin-theme .btn-share-survey {
+    background: rgba(245,158,11,0.1);
+    border-color: rgba(245,158,11,0.25);
+    color: var(--accent);
+}
+body.admin-theme .btn-share-survey:hover {
+    background: rgba(245,158,11,0.2);
+    border-color: var(--accent);
+}
+
 /* ─── RESPONSIVE ─── */
 @media (max-width: 900px) {
     .stats { grid-template-columns: repeat(2, 1fr); }

@@ -8,18 +8,21 @@ GalApp es una aplicación web de votaciones en vivo desarrollada en Python con F
 
 1. [Arquitectura del proyecto](#arquitectura-del-proyecto)
 2. [Tecnologías](#tecnologías)
-3. [Puesta en marcha](#puesta-en-marcha)
-4. [Usuario administrador](#usuario-administrador)
-5. [API REST](#api-rest)
-6. [Autenticación JWT](#autenticación-jwt)
-7. [Seguridad – OWASP Top 10 2025](#seguridad--owasp-top-10-2025)
-8. [Cabeceras de seguridad HTTP](#cabeceras-de-seguridad-http)
-9. [Base de datos](#base-de-datos)
-10. [Contenedorización Docker](#contenedorización-docker)
-11. [Testing](#testing)
-12. [CI/CD – GitHub Actions](#cicd--github-actions)
-13. [GitFlow](#gitflow)
-14. [Pruebas con Postman](#pruebas-con-postman)
+3. [Entorno virtual y aislamiento Docker](#entorno-virtual-y-aislamiento-docker)
+4. [Puesta en marcha](#puesta-en-marcha)
+5. [Tipos de usuario y diferenciación visual](#tipos-de-usuario-y-diferenciación-visual)
+6. [API REST](#api-rest)
+7. [Autenticación JWT](#autenticación-jwt)
+8. [Seguridad – OWASP Top 10 Web 2025](#seguridad--owasp-top-10-web-2025)
+9. [Seguridad – OWASP API Security Top 10](#seguridad--owasp-api-security-top-10)
+10. [Cabeceras de seguridad HTTP](#cabeceras-de-seguridad-http)
+11. [CCN-CERT – Estándares aplicados](#ccn-cert--estándares-aplicados)
+12. [Base de datos](#base-de-datos)
+13. [Contenedorización Docker](#contenedorización-docker)
+14. [Testing](#testing)
+15. [CI/CD – GitHub Actions](#cicd--github-actions)
+16. [GitFlow](#gitflow)
+17. [Pruebas con Postman](#pruebas-con-postman)
 
 ---
 
@@ -44,12 +47,12 @@ Galapp/
 │   ├── static/
 │   │   ├── login.js              # Login + validación open redirect en ?siguiente=
 │   │   ├── register.js           # Registro con validación cliente
-│   │   ├── dashboard.js          # Dashboard: carga surveys, votación, compartir
+│   │   ├── dashboard.js          # Dashboard: carga surveys, votación, tema admin
 │   │   ├── create_survey.js      # Constructor dinámico de encuestas (WeakMap para imágenes)
 │   │   ├── survey_vote.js        # Página de votación pública
 │   │   ├── login.css             # Estilos del formulario de login
 │   │   ├── register.css          # Estilos del formulario de registro
-│   │   ├── dashboard.css         # Estilos completos del dashboard
+│   │   ├── dashboard.css         # Estilos completos del dashboard + admin-theme
 │   │   ├── create_survey.css     # Estilos del constructor de encuestas
 │   │   ├── survey_vote.css       # Estilos de la página de votación pública
 │   │   └── uploads/              # Imágenes subidas (volumen Docker persistente)
@@ -59,11 +62,14 @@ Galapp/
 │   └── seed.py                   # Crea el usuario administrador inicial
 ├── tests/
 │   ├── conftest.py               # Fixture pytest con SQLite en memoria
-│   └── test_auth.py              # Tests de registro y login
+│   ├── test_auth.py              # 24 tests: registro, login, protección JWT
+│   ├── test_surveys.py           # 24 tests: CRUD encuestas/preguntas/opciones + IDOR
+│   ├── test_votes.py             # 10 tests: votación, unicidad, vote tampering
+│   └── test_health.py            # 4 tests: health check, error handlers
 ├── nginx/
 │   └── nginx.conf                # Proxy inverso + cabeceras de seguridad + Cache-Control /api/
 ├── .github/
-│   └── workflows/ci.yml          # Pipeline CI: lint + tests + PostgreSQL service
+│   └── workflows/ci.yml          # Pipeline CI: lint (flake8) + tests + PostgreSQL service
 ├── postman/
 │   └── Galapp.postman_collection.json
 ├── wsgi.py                       # Entry point para Gunicorn
@@ -108,8 +114,57 @@ PostgreSQL :5432  ─── SQLAlchemy ORM
 | Proxy inverso   | Nginx stable-alpine               |
 | Contenedores    | Docker, Docker Compose            |
 | Testing         | pytest, SQLite en memoria         |
-| CI/CD           | GitHub Actions                    |
-| Seguridad       | OWASP Top 10 2025, CCN-CERT       |
+| CI/CD           | GitHub Actions (lint + tests)     |
+| Seguridad       | OWASP Top 10 2025, OWASP API Top 10, CCN-CERT |
+
+---
+
+## Entorno virtual y aislamiento Docker
+
+### ¿Por qué Docker como entorno virtual?
+
+En este proyecto el **aislamiento de dependencias** se realiza a través de Docker en lugar de un entorno virtual clásico (`venv`). Esto proporciona un nivel de aislamiento mayor: no solo aísla los paquetes Python, sino también el sistema operativo, las librerías del sistema (`libpq5`), el usuario de ejecución y el sistema de archivos.
+
+| Aspecto | venv tradicional | Docker (este proyecto) |
+|---------|-----------------|------------------------|
+| Aislamiento de paquetes Python | ✓ | ✓ |
+| Aislamiento del sistema operativo | ✗ | ✓ (`python:3.12-slim`) |
+| Reproducibilidad en CI/CD | Parcial | ✓ (misma imagen) |
+| Usuario no-root | Depende del sistema | ✓ (`appuser`) |
+| Gestión de secrets | Manual | ✓ (variables de entorno Docker) |
+
+### Cómo está implementado
+
+El aislamiento está definido en [`Dockerfile`](Dockerfile):
+
+```dockerfile
+FROM python:3.12-slim
+# Instalar solo dependencias runtime (sin compiladores)
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl gosu \
+    && rm -rf /var/lib/apt/lists/*
+# Usuario no-root
+RUN useradd -m appuser
+WORKDIR /project
+# Instalar dependencias Python aisladas dentro del contenedor
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY ./app /project/app
+COPY wsgi.py /project/wsgi.py
+```
+
+El fichero [`requirements.txt`](requirements.txt) fija todas las versiones exactas, garantizando reproducibilidad total entre entornos de desarrollo, CI y producción.
+
+### Levantar el entorno
+
+```bash
+# Construir el entorno aislado y levantar todos los servicios
+docker compose up -d --build
+
+# Verificar que el entorno está activo
+docker compose ps
+```
+
+> **Screenshot recomendado:** captura la salida de `docker compose ps` mostrando los tres servicios (`db`, `web`, `nginx`) en estado `healthy`.
 
 ---
 
@@ -170,23 +225,56 @@ docker compose down -v
 
 ---
 
-## Usuario administrador
+## Tipos de usuario y diferenciación visual
 
-El script `app/seed.py` crea el usuario admin automáticamente.
+### Roles del sistema
 
-> Usar `python -m app.seed` (no `python app/seed.py`) para que Python resuelva correctamente los imports desde `/project/`.
+El modelo [`app/models/user.py`](app/models/user.py) define dos roles:
 
-```bash
-docker compose exec web python -m app.seed
-```
+| Rol | Descripción | Se crea mediante |
+|-----|-------------|-----------------|
+| `user` | Usuario estándar. Puede crear encuestas, añadir preguntas/opciones y votar. | Registro público en `/register` |
+| `admin` | Administrador. Mismo acceso que `user` más identificación visual diferenciada. | Script `app/seed.py` |
 
-Credenciales por defecto:
+Credenciales del administrador por defecto (creadas con [`app/seed.py`](app/seed.py)):
 
 | Campo    | Valor        |
 |----------|--------------|
 | Username | `admin`      |
 | Password | `Admin1234!` |
 | Role     | `admin`      |
+
+```bash
+docker compose exec web python -m app.seed
+```
+
+### Diferenciación visual del administrador
+
+Cuando el token JWT contiene `role: "admin"`, el dashboard aplica automáticamente el **tema dorado** en [`app/static/dashboard.js`](app/static/dashboard.js):
+
+```javascript
+// app/static/dashboard.js — línea 17
+if (role === 'admin') {
+    document.body.classList.add('admin-theme');
+    document.querySelector('.sidebar-logo').innerHTML = 'Gal<span>app</span> · Admin';
+    document.getElementById('topbar-title').textContent = 'Panel de Administración';
+}
+```
+
+Los cambios visuales están definidos en [`app/static/dashboard.css`](app/static/dashboard.css) bajo el selector `body.admin-theme`:
+
+| Elemento | Usuario normal | Administrador |
+|----------|---------------|---------------|
+| Color acento (`--accent`) | Violeta `#6366f1` | Dorado `#f59e0b` |
+| Título del topbar | `Encuestas` | `Panel de Administración` |
+| Logo en sidebar | `Galapp` | `Galapp · Admin` |
+| Avatar | Gradiente violeta | Gradiente dorado |
+| Botón primario | Violeta | Dorado |
+| Borde topbar | Sin borde de color | Borde dorado `2px` |
+| Borde sidebar | Gris neutro | Dorado semitransparente |
+| Badge de rol | Fondo violeta | Fondo dorado |
+
+> El rol se extrae del **JWT almacenado en `localStorage`** — no hay ninguna petición adicional al servidor para determinar el rol. La modificación del token en el cliente solo afecta a la UI, nunca a los permisos del servidor (que siempre verifica el JWT en cada request).
 
 ---
 
@@ -218,11 +306,11 @@ Authorization: Bearer <token>
 
 | Campo        | Regla                                    | Archivo              |
 |--------------|------------------------------------------|----------------------|
-| `username`   | 3–32 chars, solo `[a-zA-Z0-9_]`         | `app/routes/auth.py` |
-| `email`      | Formato `x@x.x` validado con regex       | `app/routes/auth.py` |
-| `password`   | Mín. 8 chars, mayúscula + minúscula + dígito | `app/routes/auth.py` |
-| `title`      | Requerido, máx. 200 chars               | `app/routes/api.py`  |
-| `option_text`| Requerido, máx. 300 chars               | `app/routes/api.py`  |
+| `username`   | 3–32 chars, solo `[a-zA-Z0-9_]`         | [`app/routes/auth.py`](app/routes/auth.py) |
+| `email`      | Formato `x@x.x` validado con regex       | [`app/routes/auth.py`](app/routes/auth.py) |
+| `password`   | Mín. 8 chars, mayúscula + minúscula + dígito | [`app/routes/auth.py`](app/routes/auth.py) |
+| `title`      | Requerido, máx. 200 chars               | [`app/routes/api.py`](app/routes/api.py) |
+| `text` (opción) | Requerido, máx. 300 chars            | [`app/routes/api.py`](app/routes/api.py) |
 
 ### Respuestas de error estándar
 
@@ -230,7 +318,7 @@ Authorization: Bearer <token>
 |--------|-----------------------------------------|
 | 400    | Campos faltantes o inválidos            |
 | 401    | Token ausente, expirado o inválido      |
-| 403    | Rol insuficiente                        |
+| 403    | Operación no permitida (IDOR)           |
 | 404    | Recurso no encontrado                   |
 | 429    | Rate limit superado                     |
 | 500    | Error interno (mensaje genérico, sin stack trace) |
@@ -258,7 +346,7 @@ Respuesta:
 { "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." }
 ```
 
-**Crear encuesta** (el campo `created_by` lo toma el servidor del JWT, no hace falta enviarlo):
+**Crear encuesta** (el campo `created_by` lo toma el servidor del JWT):
 
 ```bash
 curl -X POST http://localhost/api/surveys \
@@ -267,22 +355,31 @@ curl -X POST http://localhost/api/surveys \
   -d '{"title": "¿Mejor lenguaje?", "description": "Vota tu favorito"}'
 ```
 
-**Añadir opción:**
+**Añadir pregunta a una encuesta:**
 
 ```bash
-curl -X POST http://localhost/api/surveys/1/options \
+curl -X POST http://localhost/api/surveys/1/questions \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"option_text": "Python"}'
+  -d '{"text": "¿Cuál prefieres?", "type": "single"}'
 ```
 
-**Votar** (el campo `user_id` lo toma el servidor del JWT, no hace falta enviarlo):
+**Añadir opción a una pregunta:**
+
+```bash
+curl -X POST http://localhost/api/questions/1/options \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Python"}'
+```
+
+**Votar** (el campo `user_id` lo toma el servidor del JWT):
 
 ```bash
 curl -X POST http://localhost/api/votes \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"survey_id": 1, "option_id": 2}'
+  -d '{"question_id": 1, "option_id": 2}'
 ```
 
 ---
@@ -315,14 +412,14 @@ curl -X POST http://localhost/api/votes \
 
 | Función / decorador        | Archivo          | Descripción                                         |
 |----------------------------|------------------|-----------------------------------------------------|
-| `generate_token(user)`     | `app/utils.py:15`| Genera JWT con id, username, role y exp (+1 hora)   |
-| `@token_required(role=None)` | `app/utils.py:25`| Decorador de protección; inyecta `g.current_user`   |
-| `_get_secret()`            | `app/utils.py:8` | Obtiene `JWT_SECRET_KEY` o lanza RuntimeError       |
-| `login()`                  | `app/routes/auth.py:40` | Valida credenciales, llama a `generate_token` |
+| `generate_token(user)`     | [`app/utils.py:15`](app/utils.py#L15) | Genera JWT con id, username, role y exp (+1 hora) |
+| `@token_required(role=None)` | [`app/utils.py:25`](app/utils.py#L25) | Decorador de protección; inyecta `g.current_user` |
+| `_get_secret()`            | [`app/utils.py:8`](app/utils.py#L8)  | Obtiene `JWT_SECRET_KEY` o lanza RuntimeError     |
+| `login()`                  | [`app/routes/auth.py:40`](app/routes/auth.py#L40) | Valida credenciales, llama a `generate_token` |
 
 ---
 
-## Seguridad – OWASP Top 10 2025
+## Seguridad – OWASP Top 10 Web 2025
 
 ### A01 – Broken Access Control (Control de Acceso Roto)
 
@@ -330,17 +427,17 @@ curl -X POST http://localhost/api/votes \
 
 | Medida | Implementación | Archivo |
 |--------|---------------|---------|
-| Todos los endpoints `/api/*` requieren JWT válido | `@token_required()` en cada ruta | `app/routes/api.py` |
-| El `created_by` de una encuesta se toma del JWT, nunca del body | `created_by = g.current_user["id"]` | `app/routes/api.py` |
-| El `user_id` del voto se toma del JWT, nunca del body | `user_id = g.current_user["id"]` | `app/routes/api.py` |
-| Control de roles: el decorador acepta parámetro `role=` | `if role and data.get("role") != role` | `app/utils.py` |
-| Un usuario solo puede votar una vez por opción/pregunta | `UniqueConstraint("question_id", "option_id", "user_id")` | `app/models/survey.py` |
-| **IDOR en preguntas:** solo el creador de la encuesta puede añadir preguntas | `if survey.created_by != g.current_user["id"]: return 403` | `app/routes/api.py:add_question` |
-| **IDOR en opciones:** solo el creador puede añadir opciones a sus preguntas | Verificación de propiedad a través de `question → survey` | `app/routes/api.py:add_option` |
-| **Vote tampering:** la opción votada debe pertenecer a la pregunta indicada | `if option.question_id != question_id: return 400` | `app/routes/api.py:vote` |
-| **Open Redirect en login:** el parámetro `?siguiente=` solo acepta rutas relativas | `siguiente.startsWith('/') && !siguiente.startsWith('//')` | `app/static/login.js` |
+| Todos los endpoints `/api/*` requieren JWT válido | `@token_required()` en cada ruta | [`app/routes/api.py`](app/routes/api.py) |
+| El `created_by` de una encuesta se toma del JWT, nunca del body | `created_by = g.current_user["id"]` | [`app/routes/api.py`](app/routes/api.py) |
+| El `user_id` del voto se toma del JWT, nunca del body | `user_id = g.current_user["id"]` | [`app/routes/api.py`](app/routes/api.py) |
+| Control de roles: el decorador acepta parámetro `role=` | `if role and data.get("role") != role` | [`app/utils.py`](app/utils.py) |
+| Un usuario solo puede votar una vez por pregunta | `UniqueConstraint("question_id", "user_id", "option_id")` | [`app/models/survey.py`](app/models/survey.py) |
+| **IDOR en preguntas:** solo el creador puede añadir preguntas | `if survey.created_by != g.current_user["id"]: return 403` | [`app/routes/api.py`](app/routes/api.py) |
+| **IDOR en opciones:** solo el creador puede añadir opciones | Verificación de propiedad a través de `question → survey` | [`app/routes/api.py`](app/routes/api.py) |
+| **Vote tampering:** la opción debe pertenecer a la pregunta | `if option.question_id != question_id: return 400` | [`app/routes/api.py`](app/routes/api.py) |
+| **Open Redirect en login:** `?siguiente=` solo acepta rutas relativas | `siguiente.startsWith('/') && !siguiente.startsWith('//')` | [`app/static/login.js`](app/static/login.js) |
 
-> **IDOR (Insecure Direct Object Reference):** sin los controles de propiedad, cualquier usuario autenticado podía añadir preguntas y opciones a encuestas ajenas mediante `POST /api/surveys/<id>/questions`. Ahora el servidor verifica que `survey.created_by == token.id`.
+> **IDOR (Insecure Direct Object Reference):** sin los controles de propiedad, cualquier usuario autenticado podía añadir preguntas y opciones a encuestas ajenas mediante `POST /api/surveys/<id>/questions`. Ahora el servidor verifica `survey.created_by == token.id`. Cubierto en norma CCN-CERT IC-03 (Gestión de acceso a objetos).
 
 > **Vote Tampering:** sin la verificación de pertenencia, un atacante podía enviar `{"question_id": 1, "option_id": 99}` donde la opción 99 pertenece a otra pregunta, adulterando resultados. Ahora se verifica la coherencia pregunta↔opción.
 
@@ -354,13 +451,13 @@ curl -X POST http://localhost/api/votes \
 
 | Medida | Implementación | Archivo |
 |--------|---------------|---------|
-| Contraseñas hasheadas con PBKDF2-SHA256 al registrar | `generate_password_hash(password)` | `app/routes/auth.py:49` |
-| Verificación segura sin comparación directa | `check_password_hash(user.password, password)` | `app/routes/auth.py:62` |
-| Claves secretas en variables de entorno | `os.getenv("JWT_SECRET_KEY")` | `app/utils.py:9` |
-| Error explícito si la clave no está definida | `raise RuntimeError(...)` | `app/utils.py:11` |
-| JWT firmado con HMAC-SHA256 | `jwt.encode(..., algorithm="HS256")` | `app/utils.py:22` |
-| JWT nunca se muestra en la interfaz | Token eliminado del dashboard | `app/templates/dashboard.html` |
-| `.env` excluido del repositorio | Entrada en `.gitignore` | `.gitignore` |
+| Contraseñas hasheadas con PBKDF2-SHA256 al registrar | `generate_password_hash(password)` | [`app/routes/auth.py:49`](app/routes/auth.py#L49) |
+| Verificación segura sin comparación directa | `check_password_hash(user.password, password)` | [`app/routes/auth.py:62`](app/routes/auth.py#L62) |
+| Claves secretas en variables de entorno | `os.getenv("JWT_SECRET_KEY")` | [`app/utils.py:9`](app/utils.py#L9) |
+| Error explícito si la clave no está definida | `raise RuntimeError(...)` | [`app/utils.py:11`](app/utils.py#L11) |
+| JWT firmado con HMAC-SHA256 | `jwt.encode(..., algorithm="HS256")` | [`app/utils.py:22`](app/utils.py#L22) |
+| JWT nunca se muestra en la interfaz | Token eliminado del dashboard | [`app/templates/dashboard.html`](app/templates/dashboard.html) |
+| `.env` excluido del repositorio | Entrada en `.gitignore` | [`.gitignore`](.gitignore) |
 
 ---
 
@@ -370,13 +467,13 @@ curl -X POST http://localhost/api/votes \
 
 | Medida | Implementación | Archivo |
 |--------|---------------|---------|
-| Todas las consultas usan SQLAlchemy ORM con parámetros enlazados | `User.query.filter_by(username=username)` | `app/routes/auth.py`, `app/routes/api.py` |
+| Todas las consultas usan SQLAlchemy ORM con parámetros enlazados | `User.query.filter_by(username=username)` | [`app/routes/auth.py`](app/routes/auth.py), [`app/routes/api.py`](app/routes/api.py) |
 | Sin ninguna consulta SQL manual con f-strings | Ningún `db.execute(f"...")` en el código | — |
-| Todo el HTML dinámico pasa por la función `esc()` | `.replace(/</g,'&lt;')`, etc. | `app/static/dashboard.js`, `app/static/survey_vote.js` |
-| `esc()` escapa los 5 caracteres peligrosos: `&`, `<`, `>`, `"`, `'` | Añadido `.replace(/'/g,'&#x27;')` (comilla simple) | `app/static/dashboard.js`, `app/static/survey_vote.js` |
-| Longitud máxima en todos los campos de texto | `len(title) > 200`, `len(text) > 500`, `len(text) > 300` | `app/routes/api.py` |
-| CSP `script-src 'self'` bloquea scripts inline y externos | Cabecera `Content-Security-Policy` en nginx | `nginx/nginx.conf` |
-| CSP `object-src 'none'` bloquea plugins (Flash, Java applets) | Añadido a la directiva CSP | `nginx/nginx.conf` |
+| Todo el HTML dinámico pasa por la función `esc()` | `.replace(/</g,'&lt;')`, etc. | [`app/static/dashboard.js`](app/static/dashboard.js), [`app/static/survey_vote.js`](app/static/survey_vote.js) |
+| `esc()` escapa los 5 caracteres peligrosos: `&`, `<`, `>`, `"`, `'` | `.replace(/'/g,'&#x27;')` (comilla simple) | [`app/static/dashboard.js`](app/static/dashboard.js) |
+| Longitud máxima en todos los campos de texto | `len(title) > 200`, `len(text) > 500`, `len(text) > 300` | [`app/routes/api.py`](app/routes/api.py) |
+| CSP `script-src 'self'` bloquea scripts inline y externos | Cabecera `Content-Security-Policy` en nginx | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| CSP `object-src 'none'` bloquea plugins (Flash, Java applets) | Añadido a la directiva CSP | [`nginx/nginx.conf`](nginx/nginx.conf) |
 
 > **XSS via comilla simple:** la versión anterior de `esc()` no escapaba `'`. Un atacante con texto como `'; fetch('//evil')//` en un atributo HTML podía inyectar eventos. Ahora se escapa a `&#x27;`.
 
@@ -388,11 +485,11 @@ curl -X POST http://localhost/api/votes \
 
 | Medida | Implementación | Archivo |
 |--------|---------------|---------|
-| Patrón App Factory para configuración por entorno | `def create_app(test_config=None)` | `app/main.py:29` |
+| Patrón App Factory para configuración por entorno | `def create_app(test_config=None)` | [`app/main.py:29`](app/main.py#L29) |
 | Modelos separados de rutas separados de templates | Estructura `models/`, `routes/`, `templates/` | Toda la carpeta `app/` |
-| Usuario no-root en el contenedor Docker | `RUN useradd -m appuser` + `USER appuser` | `Dockerfile:32,54` |
-| Red interna Docker: web y db no expuestos al exterior | `networks: internal`, solo nginx expone puerto 80 | `docker-compose.yml:11,34` |
-| Verificación de variables de entorno al arrancar | `REQUIRED_ENV_VARS` loop en módulo raíz | `app/main.py:16` |
+| Usuario no-root en el contenedor Docker | `RUN useradd -m appuser` + `exec gosu appuser gunicorn` | [`Dockerfile`](Dockerfile) |
+| Red interna Docker: web y db no expuestos al exterior | `networks: internal`, solo nginx expone puerto 80 | [`docker-compose.yml`](docker-compose.yml) |
+| Verificación de variables de entorno al arrancar | `REQUIRED_ENV_VARS` loop en módulo raíz | [`app/main.py:16`](app/main.py#L16) |
 
 ---
 
@@ -402,19 +499,19 @@ curl -X POST http://localhost/api/votes \
 
 | Medida | Implementación | Archivo |
 |--------|---------------|---------|
-| Nginx oculta versión del servidor | `server_tokens off;` | `nginx/nginx.conf` |
-| Timeouts de conexión configurados | `client_body_timeout 10s`, etc. | `nginx/nginx.conf` |
-| Límite de tamaño en nginx y Flask | `client_max_body_size 5M` + `MAX_CONTENT_LENGTH = 5 MB` | `nginx/nginx.conf`, `app/main.py` |
-| Error 500 devuelve mensaje genérico, sin stack trace | `@app.errorhandler(500)` con log interno | `app/main.py` |
-| Error 404 devuelve JSON, no página Flask por defecto | `@app.errorhandler(404)` | `app/main.py` |
-| Dockerfile sin compiladores en producción | Imagen única basada en `python:3.12-slim` + solo dependencias runtime | `Dockerfile` |
-| Recursos limitados por contenedor | `cpus: "0.50"`, `memory: 512M` | `docker-compose.yml` |
-| Healthchecks en todos los servicios | `healthcheck:` en db, web, nginx | `docker-compose.yml` |
-| **Cache-Control en respuestas autenticadas** | `no-store, no-cache, must-revalidate, private` en `/api/` y `/auth/` | `nginx/nginx.conf` |
-| **Path Traversal en subida de imágenes** | `os.path.basename()` antes de extraer extensión y al construir URLs | `app/routes/api.py` |
-| `X-Permitted-Cross-Domain-Policies: none` | Impide carga de políticas desde dominios externos (Flash, PDF) | `nginx/nginx.conf` |
-| `X-XSS-Protection: 0` (reemplaza el `1; mode=block` deprecated) | El valor `1` puede crear nuevas vulnerabilidades en navegadores modernos | `nginx/nginx.conf` |
-| `Referrer-Policy: strict-origin` | Solo envía el origen (sin path) en cabecera Referer | `nginx/nginx.conf` |
+| Nginx oculta versión del servidor | `server_tokens off;` | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| Timeouts de conexión configurados | `client_body_timeout 10s`, etc. | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| Límite de tamaño en nginx y Flask | `client_max_body_size 5M` + `MAX_CONTENT_LENGTH = 5 MB` | [`nginx/nginx.conf`](nginx/nginx.conf), [`app/main.py`](app/main.py) |
+| Error 500 devuelve mensaje genérico, sin stack trace | `@app.errorhandler(500)` con log interno | [`app/main.py`](app/main.py) |
+| Error 404 devuelve JSON, no página Flask por defecto | `@app.errorhandler(404)` | [`app/main.py`](app/main.py) |
+| Dockerfile sin compiladores en producción | Imagen `python:3.12-slim` + solo dependencias runtime | [`Dockerfile`](Dockerfile) |
+| Recursos limitados por contenedor | `cpus: "0.50"`, `memory: 512M` | [`docker-compose.yml`](docker-compose.yml) |
+| Healthchecks en todos los servicios | `healthcheck:` en db, web, nginx | [`docker-compose.yml`](docker-compose.yml) |
+| **Cache-Control en respuestas autenticadas** | `no-store, no-cache, must-revalidate, private` en `/api/` y `/auth/` | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| **Path Traversal en subida de imágenes** | `os.path.basename()` antes de extraer extensión y al construir URLs | [`app/routes/api.py`](app/routes/api.py) |
+| `X-Permitted-Cross-Domain-Policies: none` | Impide carga de políticas desde dominios externos | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| `X-XSS-Protection: 0` (reemplaza el `1; mode=block` deprecated) | El valor `1` puede crear vulnerabilidades en navegadores modernos | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| `Referrer-Policy: strict-origin` | Solo envía el origen (sin path) en cabecera Referer | [`nginx/nginx.conf`](nginx/nginx.conf) |
 
 > **Path Traversal:** un atacante podía enviar un filename como `../../etc/passwd.jpg`. Aunque el UUID rename ya lo neutralizaba en el almacenamiento, el procesador de extensiones y la función `_img_url()` operaban sobre el nombre sin sanear. Ahora se aplica `os.path.basename()` antes de cualquier operación.
 
@@ -428,18 +525,18 @@ curl -X POST http://localhost/api/votes \
 
 | Medida | Implementación | Archivo |
 |--------|---------------|---------|
-| Tokens JWT con expiración de 1 hora | `timedelta(hours=1)` en el payload `exp` | `app/utils.py` |
-| Error de login genérico (no indica si falla usuario o contraseña) | `"Invalid credentials"` en ambos casos | `app/routes/auth.py` |
-| Rate limiting en login: máx. 10 peticiones/min por IP | `limiter.limit("10 per minute")` | `app/main.py` |
-| Rate limiting en registro: máx. 5 peticiones/min por IP | `limiter.limit("5 per minute")` | `app/main.py` |
-| **Rate limiting en creación de encuestas: máx. 20/min por IP** | `limiter.limit("20 per minute")` en `create_survey` | `app/main.py` |
-| **Rate limiting en votos: máx. 60/min por IP** (anti vote-stuffing) | `limiter.limit("60 per minute")` en `vote` | `app/main.py` |
-| Respuesta 429 con mensaje claro al superar el límite | `@app.errorhandler(429)` | `app/main.py` |
-| Validación de complejidad de contraseña | Mín. 8 chars + mayúscula + minúscula + dígito | `app/routes/auth.py` |
-| Validación de formato de email con regex | `_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")` | `app/routes/auth.py` |
-| Validación de username con caracteres seguros | `_USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,32}$")` | `app/routes/auth.py` |
-| Login usa fetch JSON, nunca GET con credenciales en URL | `fetch('/auth/login', {method:'POST',...})` | `app/static/login.js` |
-| Rollback de sesión DB en caso de error durante el registro | `try/except SQLAlchemyError` con `db.session.rollback()` | `app/routes/auth.py` |
+| Tokens JWT con expiración de 1 hora | `timedelta(hours=1)` en el payload `exp` | [`app/utils.py`](app/utils.py) |
+| Error de login genérico (no indica si falla usuario o contraseña) | `"Invalid credentials"` en ambos casos | [`app/routes/auth.py`](app/routes/auth.py) |
+| Rate limiting en login: máx. 10 peticiones/min por IP | `limiter.limit("10 per minute")` | [`app/main.py`](app/main.py) |
+| Rate limiting en registro: máx. 5 peticiones/min por IP | `limiter.limit("5 per minute")` | [`app/main.py`](app/main.py) |
+| **Rate limiting en creación de encuestas: máx. 20/min** | `limiter.limit("20 per minute")` en `create_survey` | [`app/main.py`](app/main.py) |
+| **Rate limiting en votos: máx. 60/min** (anti vote-stuffing) | `limiter.limit("60 per minute")` en `vote` | [`app/main.py`](app/main.py) |
+| Respuesta 429 con mensaje claro al superar el límite | `@app.errorhandler(429)` | [`app/main.py`](app/main.py) |
+| Validación de complejidad de contraseña | Mín. 8 chars + mayúscula + minúscula + dígito | [`app/routes/auth.py`](app/routes/auth.py) |
+| Validación de formato de email con regex | `_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")` | [`app/routes/auth.py:14`](app/routes/auth.py#L14) |
+| Validación de username con caracteres seguros | `_USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,32}$")` | [`app/routes/auth.py:15`](app/routes/auth.py#L15) |
+| Login usa fetch JSON, nunca GET con credenciales en URL | `fetch('/auth/login', {method:'POST',...})` | [`app/static/login.js`](app/static/login.js) |
+| Rollback de sesión DB en caso de error durante el registro | `try/except SQLAlchemyError` con `db.session.rollback()` | [`app/routes/auth.py`](app/routes/auth.py) |
 
 ---
 
@@ -449,16 +546,103 @@ curl -X POST http://localhost/api/votes \
 
 | Medida | Implementación | Archivo |
 |--------|---------------|---------|
-| Gunicorn registra cada petición: IP, método, ruta, código, tiempo | Configuración por defecto de Gunicorn | `wsgi.py` |
-| Nginx registra todas las peticiones entrantes | Log de acceso Nginx | `nginx/nginx.conf` |
-| Códigos HTTP semánticos en todas las respuestas | 200, 201, 400, 401, 403, 404, 429, 500 | `app/routes/api.py`, `app/routes/auth.py` |
-| El ID del usuario nunca se expone en la UI | Stat card de User ID eliminada | `app/templates/dashboard.html` |
+| Gunicorn registra cada petición: IP, método, ruta, código, tiempo | Configuración por defecto de Gunicorn | [`wsgi.py`](wsgi.py) |
+| Nginx registra todas las peticiones entrantes | Log de acceso Nginx | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| Códigos HTTP semánticos en todas las respuestas | 200, 201, 400, 401, 403, 404, 429, 500 | [`app/routes/api.py`](app/routes/api.py), [`app/routes/auth.py`](app/routes/auth.py) |
+| El ID del usuario nunca se expone en la UI | Stat card de User ID eliminada | [`app/templates/dashboard.html`](app/templates/dashboard.html) |
+
+---
+
+## Seguridad – OWASP API Security Top 10
+
+La API de GalApp implementa medidas específicas contra las vulnerabilidades del [OWASP API Security Top 10](https://owasp.org/API-Security/editions/2023/en/0x11-t10/).
+
+### API1:2023 – Broken Object Level Authorization
+
+**Riesgo:** Un usuario autenticado puede acceder o modificar objetos que no le pertenecen usando su ID en la URL.
+
+| Medida | Dónde |
+|--------|-------|
+| Solo el creador de una encuesta puede añadirle preguntas (`created_by == token.id`) | [`app/routes/api.py`](app/routes/api.py) — `add_question()` |
+| Solo el creador puede añadir opciones a sus preguntas (verificación a través de FK) | [`app/routes/api.py`](app/routes/api.py) — `add_option()` |
+| Los resultados y votos solo se devuelven al usuario autenticado que los solicita | [`app/routes/api.py`](app/routes/api.py) — `my_votes()`, `results()` |
+
+### API2:2023 – Broken Authentication
+
+**Riesgo:** Tokens débiles, sin expiración, o sin validación completa.
+
+| Medida | Dónde |
+|--------|-------|
+| JWT firmado con HMAC-SHA256, expiración 1 hora | [`app/utils.py`](app/utils.py) |
+| Validación de firma, expiración y formato en cada request | [`app/utils.py`](app/utils.py) — `@token_required()` |
+| Rate limiting 10 req/min en login (anti brute-force) | [`app/main.py`](app/main.py) |
+
+### API3:2023 – Broken Object Property Level Authorization
+
+**Riesgo:** El cliente puede sobrescribir campos del servidor (mass assignment).
+
+| Medida | Dónde |
+|--------|-------|
+| `created_by` de encuesta → siempre del JWT, no del body | [`app/routes/api.py`](app/routes/api.py) |
+| `user_id` del voto → siempre del JWT, no del body | [`app/routes/api.py`](app/routes/api.py) |
+| Solo se leen campos explícitos del JSON (`title`, `description`, `text`, `type`) | [`app/routes/api.py`](app/routes/api.py) |
+
+### API4:2023 – Unrestricted Resource Consumption
+
+**Riesgo:** Un cliente puede hacer flood de requests o subir archivos enormes.
+
+| Medida | Dónde |
+|--------|-------|
+| Rate limits por IP en todos los endpoints sensibles | [`app/main.py`](app/main.py) |
+| `MAX_CONTENT_LENGTH = 5 MB` en Flask | [`app/main.py`](app/main.py) |
+| `client_max_body_size 5M` en nginx | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| Límite de longitud en todos los campos de texto | [`app/routes/api.py`](app/routes/api.py) |
+| Límites de recursos Docker (`cpus`, `memory`) | [`docker-compose.yml`](docker-compose.yml) |
+
+### API5:2023 – Broken Function Level Authorization
+
+**Riesgo:** Acceso a funciones administrativas por usuarios no autorizados.
+
+| Medida | Dónde |
+|--------|-------|
+| Decorador `@token_required(role="admin")` para operaciones administrativas | [`app/utils.py`](app/utils.py) |
+| Respuesta 403 cuando el rol no coincide | [`app/utils.py`](app/utils.py) |
+
+### API6:2023 – Unrestricted Access to Sensitive Business Flows
+
+**Riesgo:** Automatización masiva de votos o registros.
+
+| Medida | Dónde |
+|--------|-------|
+| Rate limit 60 req/min en `/api/votes` | [`app/main.py`](app/main.py) |
+| Rate limit 5 req/min en `/auth/register` | [`app/main.py`](app/main.py) |
+| `UniqueConstraint` a nivel BD impide doble voto aunque se eluda el rate limit | [`app/models/survey.py`](app/models/survey.py) |
+
+### API8:2023 – Security Misconfiguration
+
+**Riesgo:** Headers de seguridad ausentes, versiones de servidor visibles, CORS permisivo.
+
+| Medida | Dónde |
+|--------|-------|
+| CSP, X-Frame-Options, X-Content-Type-Options, Permissions-Policy | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| `server_tokens off` (oculta versión Nginx) | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| `Cache-Control: no-store` en endpoints autenticados | [`nginx/nginx.conf`](nginx/nginx.conf) |
+| Sin CORS `*` — fetch solo al mismo origen | [`nginx/nginx.conf`](nginx/nginx.conf) CSP `connect-src 'self'` |
+
+### API9:2023 – Improper Inventory Management
+
+**Riesgo:** Endpoints de debug o versiones antiguas de la API expuestos.
+
+| Medida | Dónde |
+|--------|-------|
+| No hay endpoints de debug (`/debug`, `/test`, `/v0/*`) en producción | [`app/routes/api.py`](app/routes/api.py) |
+| `GET /api/health` es el único endpoint público de estado, sin información sensible | [`app/routes/api.py`](app/routes/api.py) |
 
 ---
 
 ## Cabeceras de seguridad HTTP
 
-Configuradas en `nginx/nginx.conf` para todas las respuestas:
+Configuradas en [`nginx/nginx.conf`](nginx/nginx.conf) para todas las respuestas:
 
 | Cabecera | Valor | Protección |
 |----------|-------|------------|
@@ -492,12 +676,49 @@ Configuradas en `nginx/nginx.conf` para todas las respuestas:
 
 ---
 
+## CCN-CERT – Estándares aplicados
+
+El proyecto toma como referencia las **Guías CCN-STIC** del Centro Criptológico Nacional (CCN-CERT), organismo del CNI responsable de la ciberseguridad en España.
+
+| Guía CCN-STIC | Título | Medidas aplicadas en GalApp |
+|--------------|--------|------------------------------|
+| **CCN-STIC-812** | Seguridad en entornos y aplicaciones web | CSP, cabeceras HTTP, XSS, CSRF, rate limiting, validación de entrada |
+| **CCN-STIC-817** | Gestión de ciberincidentes | Logging en Gunicorn y Nginx, códigos HTTP semánticos, trazabilidad |
+| **CCN-STIC-821** | Ciclo de vida del desarrollo seguro (SSDLC) | GitFlow, tests en CI/CD, revisión de código, dependencias fijadas |
+| **CCN-STIC-870** | Seguridad en contenedores | Usuario no-root (`appuser`), imagen mínima (`python:3.12-slim`), red interna Docker, límites de recursos |
+
+### Aplicación concreta por área
+
+**Gestión de identidades y accesos (CCN-STIC-812 §4):**
+- Autenticación basada en JWT con expiración — [`app/utils.py`](app/utils.py)
+- Hash PBKDF2-SHA256 para contraseñas — [`app/routes/auth.py`](app/routes/auth.py)
+- Control de acceso por objeto (IDOR prevention) — [`app/routes/api.py`](app/routes/api.py)
+- Dos roles diferenciados (`user`, `admin`) con tema visual distinto — [`app/models/user.py`](app/models/user.py), [`app/static/dashboard.css`](app/static/dashboard.css)
+
+**Comunicaciones seguras (CCN-STIC-812 §5):**
+- TLS listo para activar (HSTS preparado en nginx)
+- `Cache-Control: no-store` en endpoints autenticados
+- Cabecera `Referrer-Policy: strict-origin`
+
+**Seguridad en el desarrollo (CCN-STIC-821):**
+- Pipeline CI con lint (flake8) y tests automáticos — [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+- GitFlow estricto con ramas `feature/`, `develop`, `release/`, `hotfix/`
+- Tests de regresión de seguridad (IDOR, vote tampering, open redirect) — [`tests/`](tests/)
+
+**Contenedores (CCN-STIC-870):**
+- Sin compiladores en imagen de producción (superficie de ataque reducida)
+- `gosu` para transición segura al usuario no-root en el entrypoint
+- Volumen persistente para uploads separado del código fuente
+- Healthchecks y dependencias entre servicios bien definidas
+
+---
+
 ## Base de datos
 
 Motor: **PostgreSQL 15** gestionado con **Flask-SQLAlchemy**.
-Las tablas se crean automáticamente en el primer arranque con `db.create_all()` (`app/main.py:77`).
+Las tablas se crean automáticamente en el primer arranque con `db.create_all()` ([`app/main.py`](app/main.py)).
 
-### Modelo `users` — `app/models/user.py`
+### Modelo `users` — [`app/models/user.py`](app/models/user.py)
 
 | Campo    | Tipo        | Restricciones            |
 |----------|-------------|--------------------------|
@@ -507,40 +728,52 @@ Las tablas se crean automáticamente en el primer arranque con `db.create_all()`
 | password | String(255) | NOT NULL — hash PBKDF2   |
 | role     | String(20)  | NOT NULL, default `user` |
 
-### Modelo `surveys` — `app/models/survey.py`
+### Modelo `surveys` — [`app/models/survey.py`](app/models/survey.py)
 
 | Campo       | Tipo        | Restricciones             |
 |-------------|-------------|---------------------------|
 | id          | Integer     | PK                        |
 | title       | String(200) | NOT NULL                  |
 | description | Text        | Opcional                  |
+| image_url   | String(255) | Opcional (ruta interna)   |
 | created_by  | Integer     | FK → users.id (del JWT)   |
 | created_at  | DateTime    | UTC, automático           |
 
-### Modelo `survey_options` — `app/models/survey.py`
+### Modelo `questions` — [`app/models/survey.py`](app/models/survey.py)
 
-| Campo       | Tipo        | Restricciones          |
-|-------------|-------------|------------------------|
-| id          | Integer     | PK                     |
-| survey_id   | Integer     | FK → surveys.id        |
-| option_text | String(500) | NOT NULL               |
+| Campo         | Tipo       | Restricciones             |
+|---------------|------------|---------------------------|
+| id            | Integer    | PK                        |
+| survey_id     | Integer    | FK → surveys.id           |
+| text          | String(500)| NOT NULL                  |
+| question_type | String(20) | `single` o `multiple`     |
+| order         | Integer    | Para ordenación           |
 
-### Modelo `votes` — `app/models/survey.py`
+### Modelo `question_options` — [`app/models/survey.py`](app/models/survey.py)
 
-| Campo      | Tipo     | Restricciones                           |
-|------------|----------|-----------------------------------------|
-| id         | Integer  | PK                                      |
-| survey_id  | Integer  | FK → surveys.id                         |
-| user_id    | Integer  | FK → users.id (tomado del JWT)          |
-| option_id  | Integer  | FK → survey_options.id                  |
-| created_at | DateTime | UTC, automático                         |
-| —          | —        | `UNIQUE(survey_id, user_id)` — un voto por usuario por encuesta |
+| Campo       | Tipo        | Restricciones            |
+|-------------|-------------|--------------------------|
+| id          | Integer     | PK                       |
+| question_id | Integer     | FK → questions.id        |
+| text        | String(300) | NOT NULL                 |
+| image_url   | String(255) | Opcional                 |
+
+### Modelo `votes` — [`app/models/survey.py`](app/models/survey.py)
+
+| Campo       | Tipo     | Restricciones                                          |
+|-------------|----------|--------------------------------------------------------|
+| id          | Integer  | PK                                                     |
+| question_id | Integer  | FK → questions.id                                      |
+| user_id     | Integer  | FK → users.id (tomado del JWT)                         |
+| option_id   | Integer  | FK → question_options.id                               |
+| created_at  | DateTime | UTC, automático                                        |
+| —           | —        | `UNIQUE(question_id, user_id)` — un voto por usuario por pregunta |
 
 ---
 
 ## Contenedorización Docker
 
-### Servicios — `docker-compose.yml`
+### Servicios — [`docker-compose.yml`](docker-compose.yml)
 
 | Servicio | Imagen              | Puerto | Red      | Descripción                              |
 |----------|---------------------|--------|----------|------------------------------------------|
@@ -550,29 +783,26 @@ Las tablas se crean automáticamente en el primer arranque con `db.create_all()`
 
 **Solo el puerto 80 de nginx está expuesto al host.** Los servicios `db` y `web` son accesibles únicamente dentro de la red interna Docker `galapp_internal`.
 
-### Dockerfile multietapa — `Dockerfile`
+### Dockerfile — [`Dockerfile`](Dockerfile)
+
+Imagen única `python:3.12-slim` sin compiladores (todos los paquetes usan wheels pre-compilados):
 
 ```
-┌─────────────────────────────────────┐
-│  STAGE 1: builder (python:3.12-slim) │
-│  - apt: build-essential, libpq-dev  │
-│  - pip install -r requirements.txt  │
-│  - resultado: /venv compilado        │
-└────────────────┬────────────────────┘
-                 │  COPY --from=builder /venv /venv
-┌────────────────▼────────────────────┐
-│  STAGE 2: runtime (python:3.12-slim) │
-│  - sin gcc, sin build-essential      │
-│  - solo libpq5 (runtime PostgreSQL) │
-│  - usuario no-root: appuser          │
-│  - WORKDIR /project                  │
-│  - CMD gunicorn wsgi:app             │
-└─────────────────────────────────────┘
+FROM python:3.12-slim
+│
+├── apt: libpq5, curl, gosu  (solo runtime, sin build-essential)
+├── useradd -m appuser        (usuario no-root)
+├── pip install requirements.txt
+├── COPY app/ + wsgi.py
+├── mkdir uploads/ + chown appuser
+└── ENTRYPOINT /entrypoint.sh
+        └── mkdir uploads/  →  chown appuser  →  exec gosu appuser gunicorn
 ```
 
-Ventajas de seguridad del multietapa:
+Ventajas de seguridad:
 - La imagen final no contiene compiladores (superficie de ataque reducida)
 - Si hay una vulnerabilidad en el contenedor, el atacante no puede compilar herramientas
+- `gosu` garantiza que Gunicorn se ejecuta como `appuser`, no como root
 
 ### Healthchecks
 
@@ -604,6 +834,7 @@ memory: 256M       # nginx
 ```yaml
 volumes:
   postgres_data:   # Los datos de PostgreSQL sobreviven a docker compose down
+  uploads_data:    # Las imágenes subidas por usuarios sobreviven a reinicios
                    # Para borrarlos: docker compose down -v
 ```
 
@@ -623,7 +854,7 @@ docker compose exec web python -m pytest tests/ -v
 python -m pytest tests/ -v
 ```
 
-### Infraestructura — `tests/conftest.py`
+### Infraestructura — [`tests/conftest.py`](tests/conftest.py)
 
 El fixture `client` crea una instancia de la app con `test_config`:
 - `SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"`
@@ -644,7 +875,7 @@ Helpers reutilizables expuestos desde `conftest.py`:
 
 Validan lógica interna **sin levantar servidor HTTP**.
 
-#### `tests/test_auth.py` — `TestGenerateToken` / `TestGetSecret`
+#### [`tests/test_auth.py`](tests/test_auth.py) — `TestGenerateToken` / `TestGetSecret`
 
 | Test | Qué verifica |
 |------|-------------|
@@ -653,20 +884,20 @@ Validan lógica interna **sin levantar servidor HTTP**.
 | `test_token_expires_in_about_one_hour` | El campo `exp` está entre 59 y 61 minutos en el futuro |
 | `test_raises_if_missing` | `_get_secret()` lanza `RuntimeError` si `JWT_SECRET_KEY` no está definida |
 
-#### `tests/test_surveys.py` — `TestSurveyModel`
+#### [`tests/test_surveys.py`](tests/test_surveys.py) — `TestSurveyModel`
 
 | Test | Qué verifica |
 |------|-------------|
 | `test_survey_created_correctly` | El modelo `Survey` se persiste con `id` y `created_at` automáticos |
-| `test_survey_option_linked_to_survey` | `SurveyOption` queda enlazada vía FK y accesible en `survey.options` |
-| `test_vote_unique_constraint` | La `UniqueConstraint(survey_id, user_id)` lanza `IntegrityError` en doble voto |
+| `test_question_option_linked_to_survey` | `Question` y `QuestionOption` quedan enlazadas vía FK |
+| `test_vote_unique_constraint` | La `UniqueConstraint(question_id, user_id)` lanza `IntegrityError` en doble voto |
 
-#### `tests/test_votes.py` — `TestVoteModel`
+#### [`tests/test_votes.py`](tests/test_votes.py) — `TestVoteModel`
 
 | Test | Qué verifica |
 |------|-------------|
-| `test_same_user_cannot_vote_twice_in_db` | La BD rechaza dos votos del mismo usuario en la misma encuesta |
-| `test_different_users_can_vote_same_survey` | Dos usuarios distintos pueden votar en la misma encuesta sin conflicto |
+| `test_same_user_cannot_vote_twice_in_db` | La BD rechaza dos votos del mismo usuario en la misma pregunta |
+| `test_different_users_can_vote_same_option` | Dos usuarios distintos pueden votar la misma opción sin conflicto |
 
 ---
 
@@ -674,7 +905,7 @@ Validan lógica interna **sin levantar servidor HTTP**.
 
 Cubren el **flujo HTTP completo** a través del cliente de test Flask.
 
-#### `tests/test_auth.py` — Registro (13 casos)
+#### [`tests/test_auth.py`](tests/test_auth.py) — Registro (11 casos)
 
 | Test | Código esperado |
 |------|----------------|
@@ -682,15 +913,12 @@ Cubren el **flujo HTTP completo** a través del cliente de test Flask.
 | `test_missing_username/email/password_returns_400` | 400 |
 | `test_duplicate_username_returns_400` | 400 |
 | `test_duplicate_email_returns_400` | 400 |
-| `test_weak_password_no_uppercase_returns_400` | 400 |
-| `test_weak_password_too_short_returns_400` | 400 |
-| `test_weak_password_no_digit_returns_400` | 400 |
+| `test_weak_password_*_returns_400` (3 variantes) | 400 |
 | `test_invalid_email_returns_400` | 400 |
-| `test_invalid_username_too_short_returns_400` | 400 |
-| `test_invalid_username_special_chars_returns_400` | 400 |
+| `test_invalid_username_*_returns_400` (2 variantes) | 400 |
 | `test_empty_body_returns_400` | 400 |
 
-#### `tests/test_auth.py` — Login (7 casos)
+#### [`tests/test_auth.py`](tests/test_auth.py) — Login (6 casos)
 
 | Test | Código esperado |
 |------|----------------|
@@ -701,7 +929,7 @@ Cubren el **flujo HTTP completo** a través del cliente de test Flask.
 | `test_empty_body_returns_400` | 400 |
 | `test_error_message_is_generic` | Mismo mensaje para usuario y contraseña incorrectos (OWASP A07) |
 
-#### `tests/test_auth.py` — Protección JWT (4 casos)
+#### [`tests/test_auth.py`](tests/test_auth.py) — Protección JWT (4 casos)
 
 | Test | Qué verifica |
 |------|-------------|
@@ -710,7 +938,7 @@ Cubren el **flujo HTTP completo** a través del cliente de test Flask.
 | `test_malformed_header_returns_401` | Header sin prefijo `Bearer` → 401 |
 | `test_valid_token_grants_access` | Token válido → acceso concedido (200) |
 
-#### `tests/test_surveys.py` — CRUD de encuestas (15 casos)
+#### [`tests/test_surveys.py`](tests/test_surveys.py) — CRUD de encuestas (18 casos)
 
 | Test | Código esperado |
 |------|----------------|
@@ -721,27 +949,32 @@ Cubren el **flujo HTTP completo** a través del cliente de test Flask.
 | `test_title_too_long_returns_400` (201 chars) | 400 |
 | `test_created_by_is_taken_from_jwt_not_body` | 201 y `created_by ≠ 9999` (IDOR) |
 | `test_survey_without_description_is_ok` | 201 |
-| `test_returns_survey_with_options` | 200 + `survey` + `options[]` |
+| `test_returns_survey_with_questions_and_options` | 200 + `questions[0].options[0]` |
 | `test_nonexistent_survey_returns_404` | 404 |
+| `test_add_question_success` | 201 + `id` |
+| `test_missing_text_returns_400` | 400 |
+| `test_invalid_type_returns_400` | 400 |
+| `test_non_owner_cannot_add_question` | **403** (IDOR protection) |
 | `test_add_option_success` | 201 |
-| `test_option_text_too_long_returns_400` (301 chars) | 400 |
 | `test_missing_option_text_returns_400` | 400 |
-| `test_survey_not_found_returns_404` | 404 |
+| `test_option_text_too_long_returns_400` (301 chars) | 400 |
+| `test_non_owner_cannot_add_option` | **403** (IDOR protection) |
 | Todos los endpoints sin token | 401 |
 
-#### `tests/test_votes.py` — Votación (7 casos + 1 end-to-end)
+#### [`tests/test_votes.py`](tests/test_votes.py) — Votación (8 casos + 1 end-to-end)
 
 | Test | Qué verifica |
 |------|-------------|
 | `test_success_returns_201` | Voto registrado correctamente |
-| `test_double_vote_returns_400` | El mismo usuario no puede votar dos veces |
+| `test_double_vote_returns_400` | El mismo usuario no puede votar dos veces (single) |
 | `test_user_id_is_taken_from_jwt_not_body` | Enviar `user_id: 9999` no suplanta a otro usuario (IDOR) |
 | `test_two_different_users_can_vote` | Dos usuarios distintos votan con éxito |
-| `test_missing_survey_id/option_id_returns_400` | 400 por campos faltantes |
+| `test_invalid_option_for_question_returns_400` | **Vote tampering:** opción de otra pregunta → 400 |
+| `test_missing_question_id/option_id_returns_400` | 400 por campos faltantes |
 | `test_unauthenticated_returns_401` | 401 sin token |
-| `test_register_login_create_vote` | Flujo completo: registro → login → encuesta → opciones → voto → doble voto bloqueado |
+| `test_register_login_create_vote` | Flujo completo: registro → login → encuesta → preguntas → opciones → voto → doble voto bloqueado |
 
-#### `tests/test_health.py` — Health y error handlers (4 casos)
+#### [`tests/test_health.py`](tests/test_health.py) — Health y error handlers (4 casos)
 
 | Test | Qué verifica |
 |------|-------------|
@@ -754,7 +987,7 @@ Cubren el **flujo HTTP completo** a través del cliente de test Flask.
 
 ## CI/CD – GitHub Actions
 
-Archivo: `.github/workflows/ci.yml`
+Archivo: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 El pipeline se ejecuta automáticamente en cada `push` y `pull_request` sobre cualquier rama.
 
@@ -764,13 +997,15 @@ El pipeline se ejecuta automáticamente en cada `push` y `pull_request` sobre cu
 1. Checkout del repositorio
 2. Setup Python 3.11
 3. Instalar dependencias (pip install -r requirements.txt)
-4. Levantar servicio PostgreSQL 15 como service container de GitHub Actions
-5. Ejecutar pytest -v
+4. Lint: flake8 app/ --max-line-length=120
+5. Levantar servicio PostgreSQL 15 como service container de GitHub Actions
+6. Ejecutar pytest -v
 ```
 
 ### Variables de entorno en CI
 
 ```yaml
+PYTHONPATH: .
 POSTGRES_HOST: localhost
 POSTGRES_USER: postgres
 POSTGRES_PASSWORD: postgres
@@ -778,6 +1013,15 @@ POSTGRES_DB: galapp
 SECRET_KEY: test
 JWT_SECRET_KEY: test
 ```
+
+### Estrategia de calidad
+
+| Nivel | Herramienta | Qué detecta |
+|-------|-------------|-------------|
+| Lint estático | flake8 | Errores de estilo, imports no usados, líneas demasiado largas |
+| Tests unitarios | pytest | Lógica de modelos, utils, JWT |
+| Tests de integración | pytest + SQLite | Flujos HTTP completos, IDOR, vote tampering |
+| Tests con BD real | pytest + PostgreSQL 15 | Constraints, transacciones, integridad referencial |
 
 El CI **no despliega** la aplicación. Solo valida que los tests pasan en cada commit.
 
@@ -830,7 +1074,7 @@ git add app/routes/api.py app/models/survey.py
 git commit -m "feat: añadir endpoint de votación con protección IDOR"
 git push origin feature/nombre-funcionalidad
 # → Abrir Pull Request a develop en GitHub
-# → Esperar CI verde + code review
+# → Esperar CI verde (lint + tests) + code review
 # → Merge a develop
 
 # ── RELEASE ──
@@ -878,14 +1122,12 @@ refactor: refactorización sin cambio de comportamiento
 
 | Archivo | Descripción |
 |---------|-------------|
-| `postman/Galapp.postman_collection.json` | Colección con todos los endpoints, ejemplos y tests automáticos |
-| `postman/Galapp.postman_environment.json` | Environment con variables `base_url`, `token`, `survey_id`, `option_id` |
+| [`postman/Galapp.postman_collection.json`](postman/Galapp.postman_collection.json) | Colección con todos los endpoints, ejemplos y tests automáticos |
 
 ### Importar
 
 1. Postman → **File → Import** → selecciona `Galapp.postman_collection.json`
-2. Postman → **File → Import** → selecciona `Galapp.postman_environment.json`
-3. Arriba a la derecha selecciona el environment **"Galapp – Local"**
+2. Arriba a la derecha selecciona el environment **"Galapp – Local"** (incluido en la colección)
 
 ### Variables de entorno
 
@@ -893,17 +1135,19 @@ refactor: refactorización sin cambio de comportamiento
 |----------|-------------------|------------------------------------|
 | `base_url` | `http://localhost` | — (fija) |
 | `token` | *(vacío)* | Ejecutar **Auth / Login** |
-| `survey_id` | `1` | Ejecutar **Crear encuesta** o **Listar encuestas** |
-| `option_id` | `1` | Ejecutar **Añadir opción** o **Ver encuesta con opciones** |
+| `survey_id` | `1` | Ejecutar **Crear encuesta** |
+| `question_id` | `1` | Ejecutar **Añadir pregunta** |
+| `option_id` | `1` | Ejecutar **Añadir opción** |
 
 ### Flujo de uso recomendado
 
 ```
-1. Auth / Login           →  {{token}} se guarda automáticamente
-2. Surveys / Crear        →  {{survey_id}} se guarda automáticamente
-3. Surveys / Añadir opción (×2 mínimo)  →  {{option_id}} se guarda
-4. Votes / Votar          →  usa {{survey_id}} y {{option_id}} ya guardados
-5. Votes / Votar (otra vez)  →  devuelve 400 "User already voted"
+1. Auth / Login                   →  {{token}} se guarda automáticamente
+2. Surveys / Crear encuesta        →  {{survey_id}} se guarda automáticamente
+3. Surveys / Añadir pregunta       →  {{question_id}} se guarda automáticamente
+4. Surveys / Añadir opción (×2)    →  {{option_id}} se guarda automáticamente
+5. Votes / Votar                   →  usa {{question_id}} y {{option_id}}
+6. Votes / Votar (otra vez)        →  devuelve 400 "User already voted"
 ```
 
 ### Tests automáticos por request
@@ -917,33 +1161,23 @@ Cada request tiene scripts en la pestaña **Tests** que se ejecutan automáticam
 | Login | Status 200, campo `token` presente, formato `x.x.x` de JWT |
 | Listar encuestas | Status 200, respuesta es array |
 | Crear encuesta | Status 201, campo `id` numérico |
-| Ver encuesta | Status 200, contiene `survey` y `options` |
+| Ver encuesta | Status 200, contiene `survey` y `questions` |
+| Añadir pregunta | Status 201, campo `id` presente |
 | Añadir opción | Status 201, campo `id` presente |
 | Votar | Status 201 (primer voto) o 400 con `"already voted"` (doble voto) |
-
-### Respuestas de ejemplo guardadas
-
-Cada request incluye respuestas de ejemplo (pestaña **Examples**) con los cuerpos reales de éxito y error:
-
-| Request | Ejemplos guardados |
-|---------|--------------------|
-| Registro | 201 Created, 400 Contraseña débil, 400 Usuario ya existe |
-| Login | 200 Token JWT, 401 Credenciales inválidas, 429 Rate limit |
-| Listar encuestas | 200 con array, 401 sin token |
-| Crear encuesta | 201 Created, 400 Título faltante |
-| Ver encuesta | 200 con opciones, 404 no encontrada |
-| Añadir opción | 201 Created, 400 texto vacío |
-| Votar | 201 registrado, 400 ya votó, 401 sin token |
 
 ### Endpoints de referencia rápida
 
 ```
-GET  http://localhost/api/health                     — Sin auth
-POST http://localhost/auth/register                  — Sin auth
-POST http://localhost/auth/login                     — Sin auth
-GET  http://localhost/api/surveys                    — Bearer {{token}}
-POST http://localhost/api/surveys                    — Bearer {{token}}
-GET  http://localhost/api/surveys/{{survey_id}}      — Bearer {{token}}
-POST http://localhost/api/surveys/{{survey_id}}/options  — Bearer {{token}}
-POST http://localhost/api/votes                      — Bearer {{token}}
+GET  http://localhost/api/health                              — Sin auth
+POST http://localhost/auth/register                           — Sin auth
+POST http://localhost/auth/login                              — Sin auth
+GET  http://localhost/api/surveys                             — Bearer {{token}}
+POST http://localhost/api/surveys                             — Bearer {{token}}
+GET  http://localhost/api/surveys/{{survey_id}}               — Bearer {{token}}
+POST http://localhost/api/surveys/{{survey_id}}/questions     — Bearer {{token}}
+POST http://localhost/api/questions/{{question_id}}/options   — Bearer {{token}}
+POST http://localhost/api/votes                               — Bearer {{token}}
+GET  http://localhost/api/surveys/{{survey_id}}/my-votes      — Bearer {{token}}
+GET  http://localhost/api/surveys/{{survey_id}}/results       — Bearer {{token}}
 ```

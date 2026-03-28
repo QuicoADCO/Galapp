@@ -14,6 +14,12 @@ document.getElementById('sb-username').textContent = username;
 document.getElementById('sb-role').textContent    = role;
 document.getElementById('st-role').textContent    = role;
 
+if (role === 'admin') {
+    document.body.classList.add('admin-theme');
+    document.querySelector('.sidebar-logo').innerHTML = 'Gal<span>app</span> · Admin';
+    document.getElementById('topbar-title').textContent = 'Panel de Administración';
+}
+
 function authHdr() {
     return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
 }
