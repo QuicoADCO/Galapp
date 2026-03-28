@@ -143,9 +143,14 @@ async function buildCard(survey) {
         ${imageUrl ? `<div class="card-cover"><img src="${esc(imageUrl)}" alt="${esc(survey.title)}" loading="lazy"></div>` : ''}
         <div class="card-top-row">
             <div class="survey-tag">Encuesta #${survey.id}</div>
-            <button class="btn-share-survey" data-share-id="${survey.id}" title="Copiar enlace para compartir">
-                🔗 Compartir
-            </button>
+            <div class="card-actions">
+                <button class="btn-results-survey" data-results-id="${survey.id}" title="Ver resultados en vivo">
+                    📊 Resultados
+                </button>
+                <button class="btn-share-survey" data-share-id="${survey.id}" title="Copiar enlace para compartir">
+                    🔗 Compartir
+                </button>
+            </div>
         </div>
         <div class="survey-title">${esc(survey.title)}</div>
         ${survey.description ? `<div class="survey-desc">${esc(survey.description)}</div>` : ''}
@@ -156,6 +161,9 @@ async function buildCard(survey) {
         </div>`;
 
     el.addEventListener('click', e => {
+        const resultsBtn = e.target.closest('.btn-results-survey');
+        if (resultsBtn) { openResults(+resultsBtn.dataset.resultsId, esc(survey.title)); return; }
+
         const shareBtn = e.target.closest('.btn-share-survey');
         if (shareBtn) { compartirEncuesta(+shareBtn.dataset.shareId); return; }
 
@@ -209,6 +217,73 @@ async function submitVote(btn) {
 function logout() {
     localStorage.removeItem('token');
     window.location.href = '/login';
+}
+
+// ── RESULTADOS ──
+let _resultsTimer = null;
+
+async function openResults(surveyId, surveyTitle) {
+    const overlay = document.getElementById('results-overlay');
+    document.getElementById('results-title').textContent = surveyTitle;
+    overlay.classList.add('open');
+    overlay.dataset.surveyId = surveyId;
+
+    await refreshResults(surveyId);
+
+    _resultsTimer = setInterval(() => refreshResults(surveyId), 5000);
+}
+
+function closeResults() {
+    clearInterval(_resultsTimer);
+    _resultsTimer = null;
+    document.getElementById('results-overlay').classList.remove('open');
+    document.getElementById('results-overlay').dataset.surveyId = '';
+}
+
+async function refreshResults(surveyId) {
+    const res = await fetch(`/api/surveys/${surveyId}/results`, { headers: authHdr() });
+    if (res.status === 401) { localStorage.removeItem('token'); window.location.href = '/login'; return; }
+    if (!res.ok) { return; }
+
+    const data = await res.json();
+    const body = document.getElementById('results-body');
+
+    if (!data.questions || data.questions.length === 0) {
+        body.innerHTML = '<p class="r-empty">Esta encuesta aún no tiene preguntas.</p>';
+        return;
+    }
+
+    body.innerHTML = data.questions.map((q, qi) => {
+        const total = q.total_votes;
+        const optionsHtml = q.options.map(o => {
+            const pct  = o.percentage;
+            const isWinner = total > 0 && o.votes === Math.max(...q.options.map(x => x.votes));
+            return `
+            <div class="r-option${isWinner && total > 0 ? ' r-winner' : ''}">
+                <div class="r-opt-top">
+                    ${o.image_url
+                        ? `<img src="${esc(o.image_url)}" class="r-opt-img" alt="${esc(o.text)}" loading="lazy">`
+                        : ''}
+                    <span class="r-opt-label">${esc(o.text)}</span>
+                    <span class="r-opt-pct">${pct}%</span>
+                </div>
+                <div class="r-bar-track">
+                    <div class="r-bar-fill" style="width:${pct}%"></div>
+                </div>
+                <div class="r-opt-votes">${o.votes} ${o.votes === 1 ? 'voto' : 'votos'}</div>
+            </div>`;
+        }).join('');
+
+        return `
+        <div class="r-question">
+            <div class="r-q-header">
+                <span class="q-num">P${qi + 1}</span>
+                <span class="r-q-text">${esc(q.text)}</span>
+                <span class="r-total">${total} ${total === 1 ? 'voto' : 'votos'}</span>
+            </div>
+            <div class="r-options">${optionsHtml}</div>
+        </div>`;
+    }).join('');
 }
 
 function esc(s) {
