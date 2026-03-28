@@ -992,3 +992,42 @@ body.admin-theme .btn-share-survey:hover {
     .stats   { grid-template-columns: repeat(2, 1fr); }
     .topbar  { padding: 0 16px; }
 }
+
+/* ─── SHARE MODAL ─── */
+.share-modal {
+    max-width: 420px;
+    width: 100%;
+}
+
+.share-modal-body {
+    padding: 8px 0 4px;
+}
+
+.share-hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 12px;
+}
+
+.share-url-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.share-url-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 9px 12px;
+    font-family: monospace;
+    outline: none;
+    cursor: text;
+}
+
+.share-url-input:focus {
+    border-color: var(--accent);
+}

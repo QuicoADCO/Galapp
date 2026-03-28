@@ -41,17 +41,46 @@ function showSection(_name, btn) {
 }
 
 // ── COMPARTIR ──
-function compartirEncuesta(surveyId) {
-    const url = `${window.location.origin}/encuesta/${surveyId}`;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => {
-            toast('¡Enlace copiado al portapapeles!');
-        }).catch(() => {
-            toast(`Enlace: ${url}`, 'success');
-        });
-    } else {
-        toast(`Enlace: /encuesta/${surveyId}`, 'success');
+async function compartirEncuesta(surveyId, title) {
+    const url  = `${window.location.origin}/encuesta/${surveyId}`;
+    const text = `¡Te invito a votar en la encuesta "${title}" en Galapp!\n👉 ${url}`;
+
+    // 1. Web Share API — muestra el selector nativo del SO (móvil, Safari, Edge)
+    if (navigator.share) {
+        try {
+            await navigator.share({ title, text, url });
+            return;
+        } catch (err) {
+            if (err.name === 'AbortError') return; // el usuario canceló el diálogo
+        }
     }
+
+    // 2. Clipboard API moderna
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            toast('¡Mensaje copiado al portapapeles!');
+            return;
+        } catch { /* sin permisos de clipboard */ }
+    }
+
+    // 3. Fallback legacy: textarea temporal + execCommand
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('¡Mensaje copiado al portapapeles!');
+        return;
+    } catch { /* */ }
+
+    // 4. Último recurso: modal con enlace seleccionable manualmente
+    document.getElementById('share-url-input').value = url;
+    document.getElementById('share-overlay').classList.add('open');
 }
 
 // ── CARGAR ENCUESTAS ──
@@ -164,7 +193,7 @@ async function buildCard(survey) {
                 <button class="btn-results-survey" data-results-id="${survey.id}" title="Ver resultados en vivo">
                     📊 Resultados
                 </button>
-                <button class="btn-share-survey" data-share-id="${survey.id}" title="Copiar enlace para compartir">
+                <button class="btn-share-survey" data-share-id="${survey.id}" data-share-title="${esc(survey.title)}" title="Compartir enlace de la encuesta">
                     🔗 Compartir
                 </button>
             </div>
@@ -182,7 +211,7 @@ async function buildCard(survey) {
         if (resultsBtn) { openResults(+resultsBtn.dataset.resultsId, esc(survey.title)); return; }
 
         const shareBtn = e.target.closest('.btn-share-survey');
-        if (shareBtn) { compartirEncuesta(+shareBtn.dataset.shareId); return; }
+        if (shareBtn) { compartirEncuesta(+shareBtn.dataset.shareId, shareBtn.dataset.shareTitle); return; }
 
         const voteBtn = e.target.closest('.vote-btn');
         if (voteBtn) submitVote(voteBtn);
@@ -314,6 +343,25 @@ function esc(s) {
 document.getElementById('results-close-btn').addEventListener('click', closeResults);
 document.getElementById('results-overlay').addEventListener('click', function(e) {
     if (e.target === this) closeResults();
+});
+
+// ── COMPARTIR: modal de respaldo ──
+document.getElementById('share-close-btn').addEventListener('click', () => {
+    document.getElementById('share-overlay').classList.remove('open');
+});
+document.getElementById('share-overlay').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+});
+document.getElementById('btn-copy-share-url').addEventListener('click', () => {
+    const input = document.getElementById('share-url-input');
+    input.select();
+    input.setSelectionRange(0, 99999); // iOS
+    try {
+        document.execCommand('copy');
+        toast('¡Enlace copiado!');
+    } catch {
+        toast('Selecciona el enlace y cópialo manualmente.', 'error');
+    }
 });
 
 loadSurveys();
