@@ -75,7 +75,7 @@ Galapp/
 ├── postman/
 │   └── Galapp.postman_collection.json
 ├── wsgi.py                       # Entry point para Gunicorn
-├── Dockerfile                    # Imagen única python:3.12-slim + gosu + entrypoint inline
+├── Dockerfile                    # Imagen única python:3.12-slim + gosu + seed automático en entrypoint
 ├── docker-compose.yml            # Orquestación: db + web + nginx + volumen uploads
 └── .env                          # Variables de entorno (excluido del repositorio)
 ```
@@ -187,6 +187,10 @@ POSTGRES_DB=galapp
 POSTGRES_HOST=db
 SECRET_KEY=super-long-random-secret-key-123456
 JWT_SECRET_KEY=another-super-long-random-key-987654
+
+# Contraseña del usuario admin — CAMBIAR en producción
+# Si no se define, se usa 'Admin1234!' y se emite WARNING en los logs
+ADMIN_PASSWORD=CambiarEnProduccion123!
 ```
 
 ### Levantar la aplicación por primera vez
@@ -195,12 +199,11 @@ JWT_SECRET_KEY=another-super-long-random-key-987654
 # 1. Construir imágenes y levantar todos los servicios
 docker compose up -d --build
 
-# 2. Crear el usuario administrador inicial
-docker compose exec web python -m app.seed
-
-# 3. Verificar que todos los servicios están healthy
+# 2. Verificar que todos los servicios están healthy
 docker compose ps
 ```
+
+> **El usuario admin se crea automáticamente** en el primer arranque mediante el entrypoint del contenedor. No es necesario ningún paso manual.
 
 La aplicación queda disponible en: **http://localhost**
 
@@ -236,7 +239,9 @@ http://192.168.1.46/encuesta/1 → Encuesta compartida (voto anónimo)
 
 **Paso 3 — Compartir una encuesta concreta:**
 
-Desde el dashboard, haz clic en **🔗 Compartir** en cualquier tarjeta. El enlace copiado usará `window.location.origin`, que será la IP o el hostname desde el que estés accediendo. Envía ese enlace (WhatsApp, email, etc.) a quien quieras que vote.
+Desde el dashboard, haz clic en **🔗 Compartir** en cualquier tarjeta. Se genera automáticamente un mensaje de invitación con el título y el enlace, usando `window.location.origin` como base — así el enlace apunta a tu IP local y funciona para cualquier dispositivo de la misma red.
+
+El enlace redirige directamente a la página de votación (`/encuesta/<id>`), donde cualquier persona puede votar sin necesidad de registrarse.
 
 ### Requisitos para acceso externo (fuera de tu red)
 
@@ -253,8 +258,9 @@ Para que usuarios fuera de tu WiFi puedan acceder necesitarías:
 ```bash
 docker compose down -v
 docker compose up -d --build
-docker compose exec web python -m app.seed
 ```
+
+> El usuario admin se recrea automáticamente al arrancar. No hace falta correr el seed manualmente.
 
 ### Comandos útiles
 
@@ -327,6 +333,35 @@ Los cambios visuales están definidos en [`app/static/dashboard.css`](app/static
 | Badge de rol | Fondo violeta | Fondo dorado |
 
 > El rol se extrae del **JWT almacenado en `localStorage`** — no hay ninguna petición adicional al servidor para determinar el rol. La modificación del token en el cliente solo afecta a la UI, nunca a los permisos del servidor (que siempre verifica el JWT en cada request).
+
+### Compartir una encuesta
+
+Desde el dashboard, cada tarjeta de encuesta tiene un botón **🔗 Compartir**. Al hacer clic:
+
+1. Se compone un mensaje de invitación con el título y el enlace directo a la encuesta
+2. Se intenta compartir por el mecanismo más adecuado según el dispositivo:
+
+| Prioridad | Mecanismo | Cuándo se usa |
+|-----------|-----------|---------------|
+| 1º | **Web Share API** (`navigator.share`) | Móvil, Safari, Edge — abre el selector nativo del SO (WhatsApp, Telegram, email…) |
+| 2º | **Clipboard API** (`navigator.clipboard.writeText`) | Chrome/Firefox en desktop con HTTPS o localhost |
+| 3º | **`execCommand('copy')`** (legacy) | Navegadores sin Clipboard API moderna |
+| 4º | **Modal de respaldo** | Muestra el enlace en un campo seleccionable con botón "Copiar" |
+
+El mensaje tiene este formato:
+```
+¡Te invito a votar en la encuesta "{{título}}" en Galapp!
+👉 http://192.168.1.46/encuesta/3
+```
+
+**Seguridad del mecanismo de compartir:**
+
+| Aspecto | Implementación |
+|---------|---------------|
+| XSS en el título | El título se almacena en `data-share-title` escapado con `esc()` — el atributo HTML decodifica las entidades, el resultado es texto plano seguro |
+| URL fiable | Construida con `window.location.origin` (dato del navegador, no input del usuario) |
+| CSP | Todos los handlers via `addEventListener` — ningún `onclick` inline |
+| Modal readonly | El input del modal de respaldo es `readonly` — no se puede inyectar contenido |
 
 ---
 
@@ -653,6 +688,8 @@ curl -X POST http://localhost/api/votes \
 | Verificación segura sin comparación directa | `check_password_hash(user.password, password)` | [`app/routes/auth.py:62`](app/routes/auth.py#L62) |
 | Claves secretas en variables de entorno | `os.getenv("JWT_SECRET_KEY")` | [`app/utils.py:9`](app/utils.py#L9) |
 | Error explícito si la clave no está definida | `raise RuntimeError(...)` | [`app/utils.py:11`](app/utils.py#L11) |
+| Contraseña admin configurable via `ADMIN_PASSWORD` en `.env` | `os.getenv("ADMIN_PASSWORD", _DEFAULT_PASSWORD)` | [`app/seed.py`](app/seed.py) |
+| Warning en logs si se usa la contraseña por defecto | `log.warning(...)` al arrancar con contraseña por defecto | [`app/seed.py`](app/seed.py) |
 | JWT firmado con HMAC-SHA256 | `jwt.encode(..., algorithm="HS256")` | [`app/utils.py:22`](app/utils.py#L22) |
 | JWT nunca se muestra en la interfaz | Token eliminado del dashboard | [`app/templates/dashboard.html`](app/templates/dashboard.html) |
 | `.env` excluido del repositorio | Entrada en `.gitignore` | [`.gitignore`](.gitignore) |
@@ -688,6 +725,8 @@ curl -X POST http://localhost/api/votes \
 | Usuario no-root en el contenedor Docker | `RUN useradd -m appuser` + `exec gosu appuser gunicorn` | [`Dockerfile`](Dockerfile) |
 | Red interna Docker: web y db no expuestos al exterior | `networks: internal`, solo nginx expone puerto 80 | [`docker-compose.yml`](docker-compose.yml) |
 | Verificación de variables de entorno al arrancar | `REQUIRED_ENV_VARS` loop en módulo raíz | [`app/main.py:16`](app/main.py#L16) |
+| Admin creado automáticamente en el entrypoint (idempotente) | `gosu appuser python -m app.seed` antes de Gunicorn | [`Dockerfile`](Dockerfile) |
+| Warning si `ADMIN_PASSWORD` no está definida en producción | `log.warning(...)` en seed.py al usar contraseña por defecto | [`app/seed.py`](app/seed.py) |
 
 ---
 
@@ -1034,8 +1073,10 @@ FROM python:3.12-slim
 ├── pip install requirements.txt
 ├── COPY app/ + wsgi.py
 ├── mkdir uploads/ + chown appuser
-└── ENTRYPOINT /entrypoint.sh
-        └── mkdir uploads/  →  chown appuser  →  exec gosu appuser gunicorn
+└── ENTRYPOINT /entrypoint.sh  (escrito inline en Dockerfile — evita CRLF en Windows)
+        ├── mkdir uploads/  →  chown appuser
+        ├── gosu appuser python -m app.seed   ← crea admin si no existe (idempotente)
+        └── exec gosu appuser gunicorn
 ```
 
 Ventajas de seguridad:
