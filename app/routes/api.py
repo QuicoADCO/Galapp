@@ -111,7 +111,40 @@ def health():
 @api_bp.route("/surveys", methods=["GET"])
 @token_required()
 def get_surveys():
-    surveys = Survey.query.all()
+    """Devuelve solo las encuestas creadas por el usuario autenticado."""
+    user_id = g.current_user["id"]
+    surveys = Survey.query.filter_by(created_by=user_id).all()
+    return jsonify([
+        {
+            "id":             s.id,
+            "title":          s.title,
+            "description":    s.description,
+            "image_url":      _img_url(s.image_filename),
+            "question_count": len(s.questions),
+            "created_by":     s.created_by,
+            "created_at":     s.created_at.isoformat() if s.created_at else None,
+        }
+        for s in surveys
+    ]), 200
+
+
+@api_bp.route("/surveys/participated", methods=["GET"])
+@token_required()
+def participated_surveys():
+    """Encuestas en las que el usuario ha votado pero no creó."""
+    user_id = g.current_user["id"]
+    # Subquery: IDs de encuestas donde el usuario tiene algún voto
+    voted_ids = (
+        db.session.query(Question.survey_id)
+        .join(Vote, Vote.question_id == Question.id)
+        .filter(Vote.user_id == user_id)
+        .distinct()
+        .subquery()
+    )
+    surveys = Survey.query.filter(
+        Survey.id.in_(voted_ids),
+        Survey.created_by != user_id,
+    ).all()
     return jsonify([
         {
             "id":             s.id,

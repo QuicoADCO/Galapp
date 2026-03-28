@@ -247,6 +247,10 @@ body {
 .stat-value.v4 { color: #ec4899; }
 
 /* ─── SECTION ─── */
+#sec-participated {
+    margin-top: 40px;
+}
+
 .section-header {
     display: flex;
     align-items: center;

@@ -56,31 +56,48 @@ function compartirEncuesta(surveyId) {
 
 // ── CARGAR ENCUESTAS ──
 async function loadSurveys() {
-    const res = await fetch('/api/surveys', { headers: authHdr() });
-    if (res.status === 401) { localStorage.removeItem('token'); window.location.href = '/login'; return; }
+    const [mineRes, partRes] = await Promise.all([
+        fetch('/api/surveys', { headers: authHdr() }),
+        fetch('/api/surveys/participated', { headers: authHdr() }),
+    ]);
 
-    const surveys = await res.json();
-    document.getElementById('st-surveys').textContent = surveys.length;
+    if (mineRes.status === 401) { localStorage.removeItem('token'); window.location.href = '/login'; return; }
 
-    const grid = document.getElementById('surveys-grid');
+    const mine        = await mineRes.json();
+    const participated = partRes.ok ? await partRes.json() : [];
 
-    if (surveys.length === 0) {
-        grid.innerHTML = `
+    document.getElementById('st-surveys').textContent     = mine.length;
+    document.getElementById('st-participated').textContent = participated.length;
+
+    // ── Mis encuestas ──
+    const myGrid = document.getElementById('surveys-grid');
+    if (mine.length === 0) {
+        myGrid.innerHTML = `
             <div class="empty">
                 <div class="icon">📋</div>
-                <h3>Aún no hay encuestas</h3>
-                <p>Crea la primera con el botón de arriba</p>
+                <h3>Aún no has creado ninguna encuesta</h3>
+                <p>Usa el botón <strong>+ Nueva encuesta</strong> para empezar</p>
             </div>`;
-        document.getElementById('st-options').textContent = '0';
-        return;
+    } else {
+        const cards = await Promise.all(mine.map(buildCard));
+        myGrid.innerHTML = '';
+        cards.forEach(c => myGrid.appendChild(c.el));
     }
 
-    const cards = await Promise.all(surveys.map(buildCard));
-    const total  = cards.reduce((s, c) => s + c.n, 0);
-    document.getElementById('st-options').textContent = total;
-
-    grid.innerHTML = '';
-    cards.forEach(c => grid.appendChild(c.el));
+    // ── Encuestas participadas ──
+    const partGrid = document.getElementById('participated-grid');
+    if (participated.length === 0) {
+        partGrid.innerHTML = `
+            <div class="empty">
+                <div class="icon">🗳️</div>
+                <h3>Aún no has participado en ninguna encuesta</h3>
+                <p>Vota en una encuesta compartida y aparecerá aquí</p>
+            </div>`;
+    } else {
+        const cards = await Promise.all(participated.map(buildCard));
+        partGrid.innerHTML = '';
+        cards.forEach(c => partGrid.appendChild(c.el));
+    }
 }
 
 async function buildCard(survey) {

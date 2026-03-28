@@ -50,13 +50,13 @@
         <div class="stats">
             <div class="stat-card c1">
                 <div class="stat-icon">📋</div>
-                <div class="stat-label">Total encuestas</div>
+                <div class="stat-label">Mis encuestas</div>
                 <div class="stat-value v1" id="st-surveys">—</div>
             </div>
             <div class="stat-card c2">
                 <div class="stat-icon">🗳️</div>
-                <div class="stat-label">Total opciones</div>
-                <div class="stat-value v2" id="st-options">—</div>
+                <div class="stat-label">Participadas</div>
+                <div class="stat-value v2" id="st-participated">—</div>
             </div>
             <div class="stat-card c4">
                 <div class="stat-icon">🛡️</div>
@@ -65,16 +65,32 @@
             </div>
         </div>
 
-        <!-- SECCIÓN ENCUESTAS -->
+        <!-- SECCIÓN: MIS ENCUESTAS -->
         <div id="sec-surveys">
             <div class="section-header">
                 <div>
-                    <div class="section-title">Encuestas activas</div>
-                    <div class="section-sub">Selecciona una opción y vota</div>
+                    <div class="section-title">Mis encuestas</div>
+                    <div class="section-sub">Encuestas que has creado</div>
                 </div>
                 <a href="/create-survey" class="btn btn-primary btn-sm">+ Nueva encuesta</a>
             </div>
             <div class="surveys-grid" id="surveys-grid">
+                <div class="empty">
+                    <div class="icon">⏳</div>
+                    <h3>Cargando...</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN: ENCUESTAS PARTICIPADAS -->
+        <div id="sec-participated">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">Encuestas en las que he participado</div>
+                    <div class="section-sub">Encuestas de otros usuarios en las que has votado</div>
+                </div>
+            </div>
+            <div class="surveys-grid" id="participated-grid">
                 <div class="empty">
                     <div class="icon">⏳</div>
                     <h3>Cargando...</h3>
