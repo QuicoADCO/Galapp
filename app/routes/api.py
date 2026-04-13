@@ -572,13 +572,18 @@ def public_vote(survey_id):
 @api_bp.route("/local-ip", methods=["GET"])
 @token_required()
 def local_ip():
-    """Devuelve la IP de red local del servidor para construir enlaces compartibles."""
-    import socket
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-    except Exception:
-        ip = "127.0.0.1"
+    """Devuelve la IP de red del host para construir enlaces compartibles.
+    Usa la variable de entorno HOST_IP si está definida (recomendado en Docker).
+    """
+    ip = os.getenv("HOST_IP", "").strip()
+    if not ip:
+        # Fallback: detectar IP del contenedor (puede ser IP interna de Docker)
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            ip = "127.0.0.1"
     return jsonify({"ip": ip})
