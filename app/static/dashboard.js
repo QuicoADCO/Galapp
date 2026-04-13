@@ -58,6 +58,7 @@ function compartirEncuesta(surveyId, title) {
     // Aviso si se accede desde localhost (el enlace no funcionará en otros dispositivos)
     const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
     document.getElementById('share-localhost-warning').style.display = isLocal ? '' : 'none';
+    document.getElementById('share-qr-wrapper').style.display = isLocal ? 'none' : '';
 
     // Botón Web Share solo si el navegador lo soporta
     document.getElementById('btn-web-share').style.display = navigator.share ? '' : 'none';

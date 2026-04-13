@@ -389,7 +389,7 @@ def survey_qr_code(survey_id):
     # Construir la URL usando el host real de la petición (forwarded por nginx)
     vote_url = f"{request.scheme}://{request.host}/encuesta/{survey_id}"
 
-    factory = qrcode.image.svg.SvgPathFillImage
+    factory = qrcode.image.svg.SvgFillImage
     img = qrcode.make(vote_url, image_factory=factory, box_size=10, border=2)
 
     buf = io.BytesIO()

@@ -58,6 +58,11 @@ def create_app(test_config=None):
             f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
         )
 
+    # Confiar en el header X-Forwarded-Proto enviado por nginx para que
+    # request.scheme devuelva 'https' correctamente (usado en QR code URL)
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
     init_db(app)
     limiter.init_app(app)
 
