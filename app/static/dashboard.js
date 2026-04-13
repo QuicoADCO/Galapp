@@ -43,32 +43,49 @@ function showSection(_name, btn) {
 // ── COMPARTIR ──
 let _qrBlobUrl = null;
 
-function compartirEncuesta(surveyId, title) {
-    const url = `${window.location.origin}/encuesta/${surveyId}`;
+async function compartirEncuesta(surveyId, title) {
+    const overlay = document.getElementById('share-overlay');
+    const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
+    // Si es localhost, obtener la IP de red real del servidor
+    let shareUrl;
+    if (isLocal) {
+        try {
+            const ipRes = await fetch('/api/local-ip', { headers: authHdr() });
+            const ipData = ipRes.ok ? await ipRes.json() : {};
+            const ip = ipData.ip || window.location.hostname;
+            shareUrl = `https://${ip}/encuesta/${surveyId}`;
+        } catch {
+            shareUrl = `${window.location.origin}/encuesta/${surveyId}`;
+        }
+    } else {
+        shareUrl = `${window.location.origin}/encuesta/${surveyId}`;
+    }
 
     // Rellenar modal
     document.getElementById('share-survey-name').textContent = title;
-    document.getElementById('share-url-input').value = url;
+    document.getElementById('share-url-input').value = shareUrl;
 
     // Guardar datos para botones de compartir
-    const overlay = document.getElementById('share-overlay');
     overlay.dataset.shareTitle = title;
-    overlay.dataset.shareUrl   = url;
+    overlay.dataset.shareUrl   = shareUrl;
 
-    // Aviso si se accede desde localhost (el enlace no funcionará en otros dispositivos)
-    const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+    // Aviso si se accede desde localhost
     document.getElementById('share-localhost-warning').style.display = isLocal ? '' : 'none';
-    document.getElementById('share-qr-wrapper').style.display = isLocal ? 'none' : '';
+    // Mostrar siempre el QR (ahora la URL ya apunta a la IP de red)
+    document.getElementById('share-qr-wrapper').style.display = '';
 
     // Botón Web Share solo si el navegador lo soporta
     document.getElementById('btn-web-share').style.display = navigator.share ? '' : 'none';
 
     // QR: cargar con fetch + JWT para que el endpoint protegido responda
-    // El resultado se convierte en blob URL (permitido por img-src blob: en CSP)
+    // Pasar la base URL para que el QR encoda la IP de red, no localhost
     if (_qrBlobUrl) { URL.revokeObjectURL(_qrBlobUrl); _qrBlobUrl = null; }
     const qrImg = document.getElementById('share-qr-img');
+    qrImg.style.display = '';
     qrImg.src = '';
-    fetch(`/api/surveys/${surveyId}/qr-code`, { headers: authHdr() })
+    const qrBase = new URL(shareUrl).origin;
+    fetch(`/api/surveys/${surveyId}/qr-code?base=${encodeURIComponent(qrBase)}`, { headers: authHdr() })
         .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
         .then(blob => { _qrBlobUrl = URL.createObjectURL(blob); qrImg.src = _qrBlobUrl; })
         .catch(() => { qrImg.style.display = 'none'; });

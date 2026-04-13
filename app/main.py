@@ -85,6 +85,7 @@ def create_app(test_config=None):
     limiter.limit("30 per minute")(app.view_functions["api.participated_surveys"])
     # QR code — generación en Python, se limita para evitar abuso
     limiter.limit("30 per minute")(app.view_functions["api.survey_qr_code"])
+    limiter.limit("30 per minute")(app.view_functions["api.local_ip"])
 
     @app.errorhandler(400)
     def bad_request(e):

@@ -386,8 +386,17 @@ def survey_qr_code(survey_id):
     if not survey:
         return jsonify({"error": "Survey not found"}), 404
 
-    # Construir la URL usando el host real de la petición (forwarded por nginx)
-    vote_url = f"{request.scheme}://{request.host}/encuesta/{survey_id}"
+    # Construir la URL: si el cliente envía ?base=https://192.168.x.x se usa esa,
+    # de lo contrario se usa el host de la petición (forwarded por nginx)
+    base = request.args.get("base", "").strip()
+    if base:
+        # Validar que sea una URL https con IP o dominio, sin path adicional
+        import re as _re
+        if not _re.match(r'^https://[\w.\-]+(:\d+)?$', base):
+            return jsonify({"error": "Invalid base URL"}), 400
+        vote_url = f"{base}/encuesta/{survey_id}"
+    else:
+        vote_url = f"{request.scheme}://{request.host}/encuesta/{survey_id}"
 
     factory = qrcode.image.svg.SvgFillImage
     img = qrcode.make(vote_url, image_factory=factory, box_size=10, border=2)
@@ -561,3 +570,18 @@ def public_vote(survey_id):
         return jsonify({"error": "Error al registrar el voto"}), 500
 
     return jsonify({"message": "Vote recorded"}), 201
+
+
+@api_bp.route("/local-ip", methods=["GET"])
+@token_required()
+def local_ip():
+    """Devuelve la IP de red local del servidor para construir enlaces compartibles."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = "127.0.0.1"
+    return jsonify({"ip": ip})
