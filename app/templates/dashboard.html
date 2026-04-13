@@ -119,18 +119,32 @@
     </div>
 </div>
 
-<!-- ── MODAL COMPARTIR (fallback cuando clipboard y Web Share no están disponibles) ── -->
-<div class="modal-overlay" id="share-overlay" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+<!-- ── MODAL COMPARTIR ── -->
+<div class="modal-overlay" id="share-overlay" role="dialog" aria-modal="true" aria-labelledby="share-modal-label">
     <div class="modal share-modal">
         <div class="modal-header">
-            <h2 id="share-modal-title">Compartir encuesta</h2>
+            <div>
+                <h2 id="share-modal-label">Compartir encuesta</h2>
+                <p class="share-survey-name" id="share-survey-name"></p>
+            </div>
             <button class="btn-close" id="share-close-btn" aria-label="Cerrar">&times;</button>
         </div>
         <div class="share-modal-body">
-            <p class="share-hint">Copia y comparte este enlace:</p>
+            <div class="share-qr-wrapper">
+                <img id="share-qr-img" class="share-qr-img" src="" alt="Código QR de la encuesta">
+            </div>
+            <p class="share-hint">Escanea el QR o copia el enlace:</p>
             <div class="share-url-row">
                 <input type="text" id="share-url-input" class="share-url-input" readonly>
                 <button class="btn btn-primary btn-sm" id="btn-copy-share-url">Copiar</button>
+            </div>
+            <button class="btn btn-primary share-web-btn" id="btn-web-share" style="display:none">
+                📤 Enviar vía...
+            </button>
+            <div id="share-localhost-warning" class="share-warning" style="display:none">
+                ⚠️ Accedes desde <strong>localhost</strong> — el enlace solo funciona en este dispositivo.
+                Para compartir con otros, abre el dashboard usando tu IP de red
+                (ej: <code>http://192.168.1.46</code>).
             </div>
         </div>
     </div>

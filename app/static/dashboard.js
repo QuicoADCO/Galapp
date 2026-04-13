@@ -41,46 +41,38 @@ function showSection(_name, btn) {
 }
 
 // ── COMPARTIR ──
-async function compartirEncuesta(surveyId, title) {
-    const url  = `${window.location.origin}/encuesta/${surveyId}`;
-    const text = `¡Te invito a votar en la encuesta "${title}" en Galapp!\n👉 ${url}`;
+let _qrBlobUrl = null;
 
-    // 1. Web Share API — muestra el selector nativo del SO (móvil, Safari, Edge)
-    if (navigator.share) {
-        try {
-            await navigator.share({ title, text, url });
-            return;
-        } catch (err) {
-            if (err.name === 'AbortError') return; // el usuario canceló el diálogo
-        }
-    }
+function compartirEncuesta(surveyId, title) {
+    const url = `${window.location.origin}/encuesta/${surveyId}`;
 
-    // 2. Clipboard API moderna
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        try {
-            await navigator.clipboard.writeText(text);
-            toast('¡Mensaje copiado al portapapeles!');
-            return;
-        } catch { /* sin permisos de clipboard */ }
-    }
-
-    // 3. Fallback legacy: textarea temporal + execCommand
-    try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        toast('¡Mensaje copiado al portapapeles!');
-        return;
-    } catch { /* */ }
-
-    // 4. Último recurso: modal con enlace seleccionable manualmente
+    // Rellenar modal
+    document.getElementById('share-survey-name').textContent = title;
     document.getElementById('share-url-input').value = url;
-    document.getElementById('share-overlay').classList.add('open');
+
+    // Guardar datos para botones de compartir
+    const overlay = document.getElementById('share-overlay');
+    overlay.dataset.shareTitle = title;
+    overlay.dataset.shareUrl   = url;
+
+    // Aviso si se accede desde localhost (el enlace no funcionará en otros dispositivos)
+    const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+    document.getElementById('share-localhost-warning').style.display = isLocal ? '' : 'none';
+
+    // Botón Web Share solo si el navegador lo soporta
+    document.getElementById('btn-web-share').style.display = navigator.share ? '' : 'none';
+
+    // QR: cargar con fetch + JWT para que el endpoint protegido responda
+    // El resultado se convierte en blob URL (permitido por img-src blob: en CSP)
+    if (_qrBlobUrl) { URL.revokeObjectURL(_qrBlobUrl); _qrBlobUrl = null; }
+    const qrImg = document.getElementById('share-qr-img');
+    qrImg.src = '';
+    fetch(`/api/surveys/${surveyId}/qr-code`, { headers: authHdr() })
+        .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
+        .then(blob => { _qrBlobUrl = URL.createObjectURL(blob); qrImg.src = _qrBlobUrl; })
+        .catch(() => { qrImg.style.display = 'none'; });
+
+    overlay.classList.add('open');
 }
 
 // ── CARGAR ENCUESTAS ──
@@ -345,22 +337,52 @@ document.getElementById('results-overlay').addEventListener('click', function(e)
     if (e.target === this) closeResults();
 });
 
-// ── COMPARTIR: modal de respaldo ──
-document.getElementById('share-close-btn').addEventListener('click', () => {
+// ── COMPARTIR: cerrar modal ──
+function closeShare() {
     document.getElementById('share-overlay').classList.remove('open');
-});
+    if (_qrBlobUrl) { URL.revokeObjectURL(_qrBlobUrl); _qrBlobUrl = null; }
+}
+document.getElementById('share-close-btn').addEventListener('click', closeShare);
 document.getElementById('share-overlay').addEventListener('click', function(e) {
-    if (e.target === this) this.classList.remove('open');
+    if (e.target === this) closeShare();
 });
-document.getElementById('btn-copy-share-url').addEventListener('click', () => {
+
+// ── COMPARTIR: copiar mensaje con enlace ──
+document.getElementById('btn-copy-share-url').addEventListener('click', async () => {
+    const overlay = document.getElementById('share-overlay');
+    const title   = overlay.dataset.shareTitle;
+    const url     = overlay.dataset.shareUrl;
+    const text    = `¡Te invito a votar en la encuesta "${title}" en Galapp!\n👉 ${url}`;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            toast('¡Mensaje copiado al portapapeles!');
+            return;
+        } catch { /* sin permisos */ }
+    }
+    // Fallback legacy
     const input = document.getElementById('share-url-input');
     input.select();
-    input.setSelectionRange(0, 99999); // iOS
+    input.setSelectionRange(0, 99999);
     try {
         document.execCommand('copy');
         toast('¡Enlace copiado!');
     } catch {
         toast('Selecciona el enlace y cópialo manualmente.', 'error');
+    }
+});
+
+// ── COMPARTIR: Web Share API ──
+document.getElementById('btn-web-share').addEventListener('click', async () => {
+    const overlay = document.getElementById('share-overlay');
+    const title   = overlay.dataset.shareTitle;
+    const url     = overlay.dataset.shareUrl;
+    const text    = `¡Te invito a votar en la encuesta "${title}" en Galapp!\n👉 ${url}`;
+    try {
+        await navigator.share({ title, text, url });
+    } catch (err) {
+        if (err.name !== 'AbortError') toast('No se pudo compartir.', 'error');
     }
 });
 

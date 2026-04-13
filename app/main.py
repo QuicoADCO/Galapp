@@ -78,6 +78,8 @@ def create_app(test_config=None):
     # Listados — la consulta participated hace un JOIN; se limita para evitar abuso
     limiter.limit("60 per minute")(app.view_functions["api.get_surveys"])
     limiter.limit("30 per minute")(app.view_functions["api.participated_surveys"])
+    # QR code — generación en Python, se limita para evitar abuso
+    limiter.limit("30 per minute")(app.view_functions["api.survey_qr_code"])
 
     @app.errorhandler(400)
     def bad_request(e):

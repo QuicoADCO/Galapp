@@ -373,6 +373,36 @@ def my_votes(survey_id):
                     for v in votes]), 200
 
 
+@api_bp.route("/surveys/<int:survey_id>/qr-code", methods=["GET"])
+@token_required()
+def survey_qr_code(survey_id):
+    """Genera un QR code SVG con el enlace de votación de la encuesta."""
+    import io
+    import qrcode
+    import qrcode.image.svg
+    from flask import Response
+
+    survey = db.session.get(Survey, survey_id)
+    if not survey:
+        return jsonify({"error": "Survey not found"}), 404
+
+    # Construir la URL usando el host real de la petición (forwarded por nginx)
+    vote_url = f"{request.scheme}://{request.host}/encuesta/{survey_id}"
+
+    factory = qrcode.image.svg.SvgPathFillImage
+    img = qrcode.make(vote_url, image_factory=factory, box_size=10, border=2)
+
+    buf = io.BytesIO()
+    img.save(buf)
+    buf.seek(0)
+
+    return Response(
+        buf.getvalue(),
+        mimetype="image/svg+xml",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @api_bp.route("/surveys/<int:survey_id>/results", methods=["GET"])
 @token_required()
 def survey_results(survey_id):
