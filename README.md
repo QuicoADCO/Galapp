@@ -2,6 +2,8 @@
 
 GalApp es una aplicación web de votaciones en vivo desarrollada en Python con Flask, que implementa un ciclo completo de desarrollo seguro (SecDevOps). Integra autenticación JWT, API REST protegida, base de datos PostgreSQL, contenedorización con Docker y CI/CD con GitHub Actions.
 
+> **¿Primera vez usando la app?** Consulta la [**Guía de uso paso a paso →**](GUIA_DE_USO.md)
+
 ---
 
 ## Índice
