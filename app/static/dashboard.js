@@ -70,8 +70,6 @@ async function compartirEncuesta(surveyId, title) {
     overlay.dataset.shareTitle = title;
     overlay.dataset.shareUrl   = shareUrl;
 
-    // Aviso si se accede desde localhost
-    document.getElementById('share-localhost-warning').style.display = isLocal ? '' : 'none';
     // Mostrar siempre el QR (ahora la URL ya apunta a la IP de red)
     document.getElementById('share-qr-wrapper').style.display = '';
 
