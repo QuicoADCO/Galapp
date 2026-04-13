@@ -376,10 +376,9 @@ def my_votes(survey_id):
 @api_bp.route("/surveys/<int:survey_id>/qr-code", methods=["GET"])
 @token_required()
 def survey_qr_code(survey_id):
-    """Genera un QR code SVG con el enlace de votación de la encuesta."""
+    """Genera un QR code PNG con el enlace de votación de la encuesta."""
     import io
     import qrcode
-    import qrcode.image.svg
     from flask import Response
 
     survey = db.session.get(Survey, survey_id)
@@ -390,7 +389,6 @@ def survey_qr_code(survey_id):
     # de lo contrario se usa el host de la petición (forwarded por nginx)
     base = request.args.get("base", "").strip()
     if base:
-        # Validar que sea una URL https con IP o dominio, sin path adicional
         import re as _re
         if not _re.match(r'^https://[\w.\-]+(:\d+)?$', base):
             return jsonify({"error": "Invalid base URL"}), 400
@@ -398,16 +396,15 @@ def survey_qr_code(survey_id):
     else:
         vote_url = f"{request.scheme}://{request.host}/encuesta/{survey_id}"
 
-    factory = qrcode.image.svg.SvgFillImage
-    img = qrcode.make(vote_url, image_factory=factory, box_size=10, border=2)
+    img = qrcode.make(vote_url, box_size=10, border=2)
 
     buf = io.BytesIO()
-    img.save(buf)
+    img.save(buf, format="PNG")
     buf.seek(0)
 
     return Response(
         buf.getvalue(),
-        mimetype="image/svg+xml",
+        mimetype="image/png",
         headers={"Cache-Control": "no-store"},
     )
 
