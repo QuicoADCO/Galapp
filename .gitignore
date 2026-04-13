@@ -22,3 +22,6 @@ app/static/uploads/*
 
 # Mac
 .DS_Store
+
+# Claude Code (configuración local de la herramienta AI)
+.claude/
